@@ -1,12 +1,18 @@
 import { Link } from 'react-router-dom';
 import { useWatchlist } from '../context/WatchlistContext';
 import { posterUrl } from '../api/movieApi';
+import type { Movie } from '../api/movieApi';
 
-export default function MovieCard({ movie, index = 0 }) {
+interface MovieCardProps {
+  movie: Movie;
+  index?: number;
+}
+
+export default function MovieCard({ movie, index = 0 }: MovieCardProps) {
   const { isInWatchlist, addToWatchlist, removeFromWatchlist } = useWatchlist();
   const inWatchlist = isInWatchlist(movie.contentId);
 
-  const toggle = (e) => {
+  const toggle = (e: React.MouseEvent) => {
     e.preventDefault(); e.stopPropagation();
     inWatchlist ? removeFromWatchlist(movie.contentId) : addToWatchlist(movie);
   };
@@ -15,6 +21,9 @@ export default function MovieCard({ movie, index = 0 }) {
   const rating = movie.rating != null ? Number(movie.rating).toFixed(1) : null;
   const year   = movie.releaseYear ?? '';
   const genre  = movie.genres?.[0] ?? '';
+
+  // suppress unused-variable lint for `index` — it's kept for future animation ordering
+  void index;
 
   return (
     <Link to={`/movie/${movie.contentId}`} id={`movie-card-${movie.contentId}`}
@@ -32,7 +41,7 @@ export default function MovieCard({ movie, index = 0 }) {
       >
         <img src={src} alt={movie.title} loading="lazy"
           style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
-          onError={(e) => { e.target.src = `https://placehold.co/300x450/060609/10b981?text=${encodeURIComponent(movie.title)}`; }}
+          onError={(e) => { (e.target as HTMLImageElement).src = `https://placehold.co/300x450/060609/10b981?text=${encodeURIComponent(movie.title)}`; }}
         />
         {/* Bottom gradient */}
         <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, rgba(6,6,9,0.92) 0%, rgba(6,6,9,0.08) 45%, transparent 100%)', pointerEvents: 'none' }} />

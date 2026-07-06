@@ -1,9 +1,17 @@
 import { useRef } from 'react';
 import MovieCard from './MovieCard';
+import type { Movie } from '../api/movieApi';
 
-export default function CategoryRow({ title, movies = [], icon = '🎬' }) {
-  const ref = useRef(null);
-  const scroll = (dir) => ref.current?.scrollBy({ left: dir === 'left' ? -580 : 580, behavior: 'smooth' });
+interface CategoryRowProps {
+  title: string;
+  movies?: Movie[];
+  icon?: string;
+}
+
+export default function CategoryRow({ title, movies = [], icon = '🎬' }: CategoryRowProps) {
+  const ref = useRef<HTMLDivElement>(null);
+  const scroll = (dir: 'left' | 'right') =>
+    ref.current?.scrollBy({ left: dir === 'left' ? -580 : 580, behavior: 'smooth' });
 
   if (movies.length === 0) return null;
 
@@ -18,7 +26,7 @@ export default function CategoryRow({ title, movies = [], icon = '🎬' }) {
           <div style={{ height: '3px', width: '36px', borderRadius: '99px', background: 'linear-gradient(135deg, #10b981, #065f46)' }} />
         </div>
         <div style={{ display: 'flex', gap: '8px' }}>
-          {['left', 'right'].map((d) => (
+          {(['left', 'right'] as const).map((d) => (
             <button key={d} onClick={() => scroll(d)} style={{
               width: '34px', height: '34px', borderRadius: '50%',
               display: 'flex', alignItems: 'center', justifyContent: 'center',

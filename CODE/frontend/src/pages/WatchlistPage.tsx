@@ -2,7 +2,7 @@ import { Link } from 'react-router-dom';
 import { useWatchlist } from '../context/WatchlistContext';
 import MovieCard from '../components/MovieCard';
 
-const CONTAINER = {
+const CONTAINER: React.CSSProperties = {
   maxWidth: 'var(--container-max)',
   margin: '0 auto',
   padding: 'calc(var(--navbar-height) + 32px) 32px 64px',

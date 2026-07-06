@@ -1,11 +1,21 @@
+import React from 'react';
+
+interface FilterPanelProps {
+  genres?: string[];
+  selectedGenre?: string;
+  selectedYear?: string;
+  onGenreChange: (genre: string) => void;
+  onYearChange: (year: string) => void;
+}
+
 export default function FilterPanel({
   genres = [],
   selectedGenre = '',
   selectedYear = '',
   onGenreChange,
   onYearChange,
-}) {
-  const years = [];
+}: FilterPanelProps) {
+  const years: string[] = [];
   for (let y = 2024; y >= 1990; y--) {
     years.push(y.toString());
   }
@@ -75,7 +85,7 @@ export default function FilterPanel({
         </label>
         <select
           value={selectedYear}
-          onChange={(e) => onYearChange(e.target.value)}
+          onChange={(e: React.ChangeEvent<HTMLSelectElement>) => onYearChange(e.target.value)}
           className="w-full px-3 py-2.5 rounded-lg text-sm outline-none transition-all"
           style={{
             background: 'var(--bg-glass)',

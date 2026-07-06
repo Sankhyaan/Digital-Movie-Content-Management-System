@@ -1,10 +1,18 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { fetchMovies, fetchGenres } from '../api/movieApi';
+import type { Movie } from '../api/movieApi';
 import MovieCard from '../components/MovieCard';
 
 // ── inline SearchBar so it lives inside this page's state ──────────────────
-function SearchInput({ value, onChange, onSubmit }) {
+
+interface SearchInputProps {
+  value: string;
+  onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  onSubmit: (e: React.FormEvent<HTMLFormElement>) => void;
+}
+
+function SearchInput({ value, onChange, onSubmit }: SearchInputProps) {
   return (
     <form onSubmit={onSubmit} style={{ width: '100%' }}>
       <div style={{ position: 'relative' }}>
@@ -49,7 +57,7 @@ function SearchInput({ value, onChange, onSubmit }) {
         {value && (
           <button
             type="button"
-            onClick={() => onChange({ target: { value: '' } })}
+            onClick={() => onChange({ target: { value: '' } } as React.ChangeEvent<HTMLInputElement>)}
             style={{
               position: 'absolute',
               right: '16px',
@@ -80,8 +88,8 @@ const YEARS = Array.from({ length: 35 }, (_, i) => (2025 - i).toString());
 
 export default function SearchPage() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const [movies, setMovies]     = useState([]);
-  const [genres, setGenres]     = useState([]);
+  const [movies, setMovies]     = useState<Movie[]>([]);
+  const [genres, setGenres]     = useState<string[]>([]);
   const [loading, setLoading]   = useState(true);
   const [inputQuery, setInputQuery] = useState('');
 
@@ -103,7 +111,7 @@ export default function SearchPage() {
     async function loadMovies() {
       setLoading(true);
       try {
-        const filters = {};
+        const filters: Record<string, string> = {};
         if (query) filters.search = query;
         if (genre) filters.genre  = genre;
         if (year)  filters.year   = year;
@@ -120,7 +128,7 @@ export default function SearchPage() {
   }, [query, genre, year, type]);
 
   // ── URL helpers ────────────────────────────────────────────────────────────
-  const setFilter = (key, value) => {
+  const setFilter = (key: string, value: string) => {
     const params = new URLSearchParams(searchParams);
     if (value) params.set(key, value);
     else params.delete(key);
@@ -132,7 +140,7 @@ export default function SearchPage() {
     setInputQuery('');
   };
 
-  const handleSearchSubmit = (e) => {
+  const handleSearchSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setFilter('q', inputQuery.trim());
   };
@@ -140,7 +148,7 @@ export default function SearchPage() {
   const hasFilters = query || genre || year || type;
 
   // ── Styles ────────────────────────────────────────────────────────────────
-  const filterBtnStyle = (active) => ({
+  const filterBtnStyle = (active: boolean): React.CSSProperties => ({
     padding: '6px 14px',
     borderRadius: '8px',
     fontSize: '0.78rem',
@@ -175,7 +183,7 @@ export default function SearchPage() {
           }}
         >
           {query
-            ? <>Results for "<span className="gradient-text">{query}</span>"</>
+            ? <>Results for &quot;<span className="gradient-text">{query}</span>&quot;</>
             : genre
               ? <><span className="gradient-text">{genre}</span> Movies</>
               : 'Explore Movies'}
@@ -274,7 +282,7 @@ export default function SearchPage() {
             </p>
             <select
               value={year}
-              onChange={(e) => setFilter('year', e.target.value)}
+              onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setFilter('year', e.target.value)}
               id="year-filter-select"
               style={{
                 padding: '8px 14px',

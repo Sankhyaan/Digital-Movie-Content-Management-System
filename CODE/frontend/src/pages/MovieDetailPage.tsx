@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { fetchMovieById, posterUrl, backdropUrl } from '../api/movieApi';
+import type { MovieDetail } from '../api/movieApi';
 import { useWatchlist } from '../context/WatchlistContext';
+import React from 'react';
 
 // ── Language code → full name map ─────────────────────────────────────────────
-const LANG_MAP = {
+const LANG_MAP: Record<string, string> = {
   en: 'English',   hi: 'Hindi',     ru: 'Russian',   fr: 'French',
   de: 'German',    es: 'Spanish',   it: 'Italian',   ja: 'Japanese',
   ko: 'Korean',    zh: 'Chinese',   pt: 'Portuguese',ar: 'Arabic',
@@ -20,7 +22,7 @@ const LANG_MAP = {
 };
 
 /** Convert a language code (e.g. "ru") or raw name to a full display name. */
-const langName = (raw = '') => {
+const langName = (raw = ''): string => {
   if (!raw) return raw;
   const lower = raw.trim().toLowerCase();
   // If it's a short ISO code in our map, return full name
@@ -32,7 +34,13 @@ const langName = (raw = '') => {
 };
 
 // ── tiny helpers ──────────────────────────────────────────────────────────────
-function InfoTile({ label, value }) {
+
+interface InfoTileProps {
+  label: string;
+  value?: string | number | null;
+}
+
+function InfoTile({ label, value }: InfoTileProps) {
   return (
     <div style={{
       background: 'rgba(13,20,13,0.70)',
@@ -54,7 +62,11 @@ function InfoTile({ label, value }) {
   );
 }
 
-function SectionLabel({ children }) {
+interface SectionLabelProps {
+  children: React.ReactNode;
+}
+
+function SectionLabel({ children }: SectionLabelProps) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '20px' }}>
       <div style={{ width: '3px', height: '22px', borderRadius: '2px', background: 'var(--gradient-accent)', flexShrink: 0 }} />
@@ -65,9 +77,11 @@ function SectionLabel({ children }) {
   );
 }
 
+// ── Main component ─────────────────────────────────────────────────────────────
+
 export default function MovieDetailPage() {
-  const { id } = useParams();
-  const [movie, setMovie]       = useState(null);
+  const { id } = useParams<{ id: string }>();
+  const [movie, setMovie]       = useState<MovieDetail | null>(null);
   const [loading, setLoading]   = useState(true);
   const [activeTab, setActive]  = useState('overview');
   const { isInWatchlist, addToWatchlist, removeFromWatchlist } = useWatchlist();
@@ -182,7 +196,7 @@ export default function MovieDetailPage() {
                 src={poster}
                 alt={movie.title}
                 style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
-                onError={(e) => { e.target.src = `https://placehold.co/300x450/060609/10b981?text=${encodeURIComponent(movie.title)}`; }}
+                onError={(e) => { (e.target as HTMLImageElement).src = `https://placehold.co/300x450/060609/10b981?text=${encodeURIComponent(movie.title)}`; }}
               />
             </div>
 
@@ -222,7 +236,7 @@ export default function MovieDetailPage() {
                   Streaming On
                 </p>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  {movie.platforms.slice(0, 4).map(p => (
+                  {movie.platforms!.slice(0, 4).map(p => (
                     <div key={p.platformId} style={{
                       padding: '8px 12px',
                       borderRadius: '8px',
@@ -377,7 +391,7 @@ export default function MovieDetailPage() {
                         Available Languages
                       </p>
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                        {movie.languages.map(l => (
+                        {movie.languages!.map(l => (
                           <span key={`${l.languageId}-${l.type}`} className="accent-badge">
                             {langName(l.languageName)}
                             <span style={{ opacity: 0.6, marginLeft: '5px', fontWeight: 400 }}>({l.type})</span>
@@ -403,7 +417,7 @@ export default function MovieDetailPage() {
                       gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))',
                       gap: '16px',
                     }}>
-                      {movie.actors.map(actor => (
+                      {movie.actors!.map(actor => (
                         <div key={actor.actorId} style={{
                           background: 'rgba(13,20,13,0.70)',
                           border: '1px solid rgba(16,185,129,0.10)',
@@ -463,7 +477,7 @@ export default function MovieDetailPage() {
                       gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
                       gap: '16px',
                     }}>
-                      {movie.platforms.map(p => (
+                      {movie.platforms!.map(p => (
                         <div key={p.platformId} style={{
                           background: 'rgba(13,20,13,0.70)',
                           border: '1px solid rgba(16,185,129,0.10)',
@@ -530,7 +544,7 @@ export default function MovieDetailPage() {
                       No episode data available.
                     </div>
                   ) : (
-                    movie.seasons.map(season => (
+                    movie.seasons!.map(season => (
                       <div key={season.seasonId} style={{ marginBottom: '36px' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
                           <div style={{ width: '3px', height: '22px', borderRadius: '2px', background: 'var(--gradient-accent)', flexShrink: 0 }} />
@@ -593,6 +607,9 @@ export default function MovieDetailPage() {
           </div>{/* end info panel */}
         </div>{/* end flex row */}
       </div>{/* end content panel */}
+
+      {/* SectionLabel used for future sections */}
+      {false && <SectionLabel>placeholder</SectionLabel>}
     </div>
   );
 }

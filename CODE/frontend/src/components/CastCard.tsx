@@ -1,4 +1,16 @@
-export default function CastCard({ member, role = 'cast' }) {
+interface CastMember {
+  name: string;
+  photoUrl?: string;
+  character?: string;
+  role?: string;
+}
+
+interface CastCardProps {
+  member: CastMember;
+  role?: 'cast' | 'crew';
+}
+
+export default function CastCard({ member, role = 'cast' }: CastCardProps) {
   return (
     <div
       className="glass-card flex flex-col items-center text-center p-4"
@@ -18,7 +30,7 @@ export default function CastCard({ member, role = 'cast' }) {
           className="w-full h-full object-cover"
           loading="lazy"
           onError={(e) => {
-            e.target.src = `https://placehold.co/200x200/141428/6366f1?text=${encodeURIComponent(member.name.charAt(0))}`;
+            (e.target as HTMLImageElement).src = `https://placehold.co/200x200/141428/6366f1?text=${encodeURIComponent(member.name.charAt(0))}`;
           }}
         />
       </div>

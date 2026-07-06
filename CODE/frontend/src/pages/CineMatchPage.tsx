@@ -1,9 +1,43 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { fetchRecommendations } from '../api/movieApi';
+import type { Movie, RecommendationPreferences } from '../api/movieApi';
 import MovieCard from '../components/MovieCard';
 
-const QUESTIONS = [
+// ── Quiz question types ───────────────────────────────────────────────────────
+
+interface VibeOption {
+  label: string;
+  value: string | null;
+}
+
+interface TimeOption {
+  label: string;
+  type: 'Movie' | 'Series' | null;
+  maxDuration: number | null;
+}
+
+interface EraOption {
+  label: string;
+  minYear: number | null;
+}
+
+interface PickyOption {
+  label: string;
+  minRating: number | null;
+}
+
+type QuizOption = VibeOption | TimeOption | EraOption | PickyOption;
+
+interface Question {
+  id: 'vibe' | 'time' | 'era' | 'picky';
+  title: string;
+  options: QuizOption[];
+}
+
+// ── Quiz data ─────────────────────────────────────────────────────────────────
+
+const QUESTIONS: Question[] = [
   {
     id: 'vibe',
     title: 'What kind of vibe are you looking for today?',
@@ -13,7 +47,7 @@ const QUESTIONS = [
       { label: '💥 Keep me on the edge of my seat.', value: 'Action' },
       { label: '❤️ Something heartfelt and emotional.', value: 'Drama' },
       { label: '🤷 Surprise me!', value: null },
-    ],
+    ] as VibeOption[],
   },
   {
     id: 'time',
@@ -23,8 +57,8 @@ const QUESTIONS = [
       { label: '🍿 I want a long, epic movie.', type: 'Movie', maxDuration: 300 },
       { label: '📺 A quick series to binge.', type: 'Series', maxDuration: 2 },
       { label: '🛋️ A long show to get invested in.', type: 'Series', maxDuration: 20 },
-      { label: '🤷 I don\'t care.', type: null, maxDuration: null },
-    ],
+      { label: "🤷 I don't care.", type: null, maxDuration: null },
+    ] as TimeOption[],
   },
   {
     id: 'era',
@@ -33,8 +67,8 @@ const QUESTIONS = [
       { label: '✨ Brand new releases only.', minYear: 2020 },
       { label: '💿 Modern classics.', minYear: 2000 },
       { label: '📼 Old school retro vibes.', minYear: 1900 },
-      { label: '🤷 Doesn\'t matter to me.', minYear: null },
-    ],
+      { label: "🤷 Doesn't matter to me.", minYear: null },
+    ] as EraOption[],
   },
   {
     id: 'picky',
@@ -43,37 +77,48 @@ const QUESTIONS = [
       { label: '🏆 Only the absolute masterpieces.', minRating: 8.5 },
       { label: '👍 Anything decent is fine.', minRating: 7.0 },
       { label: '🍿 Just give me something.', minRating: null },
-    ],
+    ] as PickyOption[],
   },
 ];
 
+// ── Excited message type ──────────────────────────────────────────────────────
+
+interface ExcitedMessage {
+  emoji: string;
+  text: string;
+  sub: string;
+}
+
+// ── Component ─────────────────────────────────────────────────────────────────
+
 export default function CineMatchPage() {
   const [currentStep, setCurrentStep] = useState(0);
-  const [answers, setAnswers] = useState({
+  const [answers, setAnswers] = useState<RecommendationPreferences>({
     vibe: null,
     type: null,
     maxDuration: null,
     minYear: null,
     minRating: null,
   });
-  
-  const [loading, setLoading] = useState(false);
-  const [results, setResults] = useState(null);
 
-  const handleOptionSelect = async (option) => {
+  const [loading, setLoading] = useState(false);
+  const [results, setResults] = useState<Movie[] | null>(null);
+
+  const handleOptionSelect = async (option: QuizOption) => {
     // Update answers based on the current question
     const stepData = QUESTIONS[currentStep];
-    const newAnswers = { ...answers };
-    
+    const newAnswers: RecommendationPreferences = { ...answers };
+
     if (stepData.id === 'vibe') {
-      newAnswers.vibe = option.value;
+      newAnswers.vibe = (option as VibeOption).value;
     } else if (stepData.id === 'time') {
-      newAnswers.type = option.type;
-      newAnswers.maxDuration = option.maxDuration;
+      const o = option as TimeOption;
+      newAnswers.type = o.type;
+      newAnswers.maxDuration = o.maxDuration;
     } else if (stepData.id === 'era') {
-      newAnswers.minYear = option.minYear;
+      newAnswers.minYear = (option as EraOption).minYear;
     } else if (stepData.id === 'picky') {
-      newAnswers.minRating = option.minRating;
+      newAnswers.minRating = (option as PickyOption).minRating;
     }
 
     setAnswers(newAnswers);
@@ -119,19 +164,19 @@ export default function CineMatchPage() {
 
   // ── Render Results State ──────────────────────────────────────────────────
   if (results !== null) {
-    const excitedMessages = [
+    const excitedMessages: ExcitedMessage[] = [
       { emoji: '🎯', text: 'Nailed it!', sub: `We found ${results.length} spot-on pick${results.length === 1 ? '' : 's'} just for you.` },
-      { emoji: '🔥', text: 'You\'re going to love these!', sub: `${results.length} hand-picked recommendation${results.length === 1 ? '' : 's'} from our database.` },
+      { emoji: '🔥', text: "You're going to love these!", sub: `${results.length} hand-picked recommendation${results.length === 1 ? '' : 's'} from our database.` },
       { emoji: '🍿', text: 'Grab your popcorn!', sub: `${results.length} perfect match${results.length === 1 ? '' : 'es'} waiting for you.` },
     ];
-    const msg = results.length > 0 ? excitedMessages[results.length % excitedMessages.length] : null;
+    const msg: ExcitedMessage | null = results.length > 0 ? excitedMessages[results.length % excitedMessages.length] : null;
 
     return (
       <div style={{ maxWidth: 'var(--container-max)', margin: '0 auto', padding: 'calc(var(--navbar-height) + 40px) 36px 64px' }}>
 
         {/* ── Header ── */}
         <div style={{ textAlign: 'center', marginBottom: '56px' }}>
-          {results.length > 0 ? (
+          {results.length > 0 && msg ? (
             <>
               <div style={{ fontSize: '4rem', marginBottom: '12px', animation: 'none' }}>{msg.emoji}</div>
               <h1 style={{ fontFamily: "'Outfit', sans-serif", fontSize: '2.8rem', fontWeight: 800, marginBottom: '12px', background: 'linear-gradient(135deg, #f0fdf4 0%, #10b981 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
@@ -200,7 +245,7 @@ export default function CineMatchPage() {
 
   return (
     <div style={{ minHeight: 'calc(100vh - var(--navbar-height))', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
-      
+
       <div style={{ maxWidth: '600px', width: '100%', textAlign: 'center', marginBottom: '40px' }}>
         <span style={{ display: 'inline-block', padding: '6px 12px', background: 'rgba(16,185,129,0.1)', color: 'var(--accent-primary)', borderRadius: '20px', fontSize: '0.85rem', fontWeight: 600, letterSpacing: '0.05em', marginBottom: '20px' }}>
           QUESTION {currentStep + 1} OF {QUESTIONS.length}
@@ -245,7 +290,10 @@ export default function CineMatchPage() {
           </button>
         ))}
       </div>
-      
+
     </div>
   );
 }
+
+// Suppress unused import warning — Link is available for potential future use
+void Link;

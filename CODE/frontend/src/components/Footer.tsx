@@ -1,12 +1,17 @@
 import { Link } from 'react-router-dom';
 
-const LINKS = [
+interface NavLink {
+  label: string;
+  to: string;
+}
+
+const LINKS: NavLink[] = [
   { label: 'Home',      to: '/' },
   { label: 'Explore',   to: '/search' },
   { label: 'Watchlist', to: '/watchlist' },
 ];
 
-const GENRES = ['Action', 'Drama', 'Sci-Fi & Fantasy', 'Animation', 'Thriller', 'Comedy'];
+const GENRES: string[] = ['Action', 'Drama', 'Sci-Fi & Fantasy', 'Animation', 'Thriller', 'Comedy'];
 
 export default function Footer() {
   const year = new Date().getFullYear();

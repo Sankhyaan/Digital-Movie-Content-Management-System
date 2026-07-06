@@ -3,21 +3,22 @@ import HeroCarousel from '../components/HeroCarousel';
 import CategoryRow from '../components/CategoryRow';
 import MovieCard from '../components/MovieCard';
 import { fetchFeaturedMovies, fetchTrendingMovies, fetchMovies } from '../api/movieApi';
+import type { Movie } from '../api/movieApi';
 
-const CONTAINER = {
+const CONTAINER: React.CSSProperties = {
   maxWidth: 'var(--container-max)',
   margin: '0 auto',
   padding: '0 32px',
 };
 
 export default function HomePage() {
-  const [featured,    setFeatured]    = useState([]);
-  const [trending,    setTrending]    = useState([]);
-  const [actionMovies,setActionMovies]= useState([]);
-  const [dramaMovies, setDramaMovies] = useState([]);
-  const [scifiMovies, setScifiMovies] = useState([]);
-  const [animMovies,  setAnimMovies]  = useState([]);
-  const [allMovies,   setAllMovies]   = useState([]);
+  const [featured,    setFeatured]    = useState<Movie[]>([]);
+  const [trending,    setTrending]    = useState<Movie[]>([]);
+  const [actionMovies,setActionMovies]= useState<Movie[]>([]);
+  const [dramaMovies, setDramaMovies] = useState<Movie[]>([]);
+  const [scifiMovies, setScifiMovies] = useState<Movie[]>([]);
+  const [animMovies,  setAnimMovies]  = useState<Movie[]>([]);
+  const [allMovies,   setAllMovies]   = useState<Movie[]>([]);
   const [loading,     setLoading]     = useState(true);
 
   useEffect(() => {

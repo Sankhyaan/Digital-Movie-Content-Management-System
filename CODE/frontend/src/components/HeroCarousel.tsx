@@ -1,12 +1,17 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { posterUrl, backdropUrl } from '../api/movieApi';
+import type { Movie } from '../api/movieApi';
 
-export default function HeroCarousel({ movies = [] }) {
+interface HeroCarouselProps {
+  movies?: Movie[];
+}
+
+export default function HeroCarousel({ movies = [] }: HeroCarouselProps) {
   const [current, setCurrent]  = useState(0);
   const [fading, setFading]    = useState(false);
 
-  const goTo = useCallback((idx) => {
+  const goTo = useCallback((idx: number) => {
     if (fading || movies.length === 0) return;
     setFading(true);
     setTimeout(() => { setCurrent(idx); setFading(false); }, 400);
@@ -65,7 +70,7 @@ export default function HeroCarousel({ movies = [] }) {
         }}>
           <img src={poster} alt={movie.title}
             style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-            onError={(e) => { e.target.src = `https://placehold.co/300x450/060609/10b981?text=${encodeURIComponent(movie.title)}`; }}
+            onError={(e) => { (e.target as HTMLImageElement).src = `https://placehold.co/300x450/060609/10b981?text=${encodeURIComponent(movie.title)}`; }}
           />
         </div>
 
@@ -90,7 +95,7 @@ export default function HeroCarousel({ movies = [] }) {
 
           {(movie.platforms ?? []).length > 0 && (
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '28px' }}>
-              {movie.platforms.map(p => (
+              {movie.platforms!.map(p => (
                 <span key={p.platformId} style={{
                   padding: '4px 12px', borderRadius: '6px', fontSize: '0.75rem', fontWeight: 500,
                   background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)', color: 'var(--text-secondary)',
@@ -120,10 +125,10 @@ export default function HeroCarousel({ movies = [] }) {
       )}
 
       {/* Arrows */}
-      {movies.length > 1 && [
+      {movies.length > 1 && ([
         { dir: 'left',  label: '‹', fn: () => goTo((current - 1 + movies.length) % movies.length) },
         { dir: 'right', label: '›', fn: next },
-      ].map(({ dir, label, fn }) => (
+      ] as const).map(({ dir, label, fn }) => (
         <button key={dir} onClick={fn} style={{
           position: 'absolute', [dir]: '20px', top: '50%', transform: 'translateY(-50%)',
           width: '40px', height: '40px', borderRadius: '50%',

@@ -1,11 +1,16 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
-export default function SearchBar({ initialQuery = '', large = false }) {
+interface SearchBarProps {
+  initialQuery?: string;
+  large?: boolean;
+}
+
+export default function SearchBar({ initialQuery = '', large = false }: SearchBarProps) {
   const [query, setQuery] = useState(initialQuery);
   const navigate = useNavigate();
 
-  const handleSubmit = (e) => {
+  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (query.trim()) {
       navigate(`/search?q=${encodeURIComponent(query.trim())}`);
@@ -27,7 +32,7 @@ export default function SearchBar({ initialQuery = '', large = false }) {
         <input
           type="text"
           value={query}
-          onChange={(e) => setQuery(e.target.value)}
+          onChange={(e: React.ChangeEvent<HTMLInputElement>) => setQuery(e.target.value)}
           placeholder="Search for movies, genres, actors..."
           className="w-full outline-none transition-all"
           style={{
@@ -38,11 +43,11 @@ export default function SearchBar({ initialQuery = '', large = false }) {
             borderRadius: large ? '16px' : '12px',
             color: 'var(--text-primary)',
           }}
-          onFocus={(e) => {
+          onFocus={(e: React.FocusEvent<HTMLInputElement>) => {
             e.target.style.borderColor = 'var(--border-accent)';
             e.target.style.boxShadow = 'var(--shadow-glow)';
           }}
-          onBlur={(e) => {
+          onBlur={(e: React.FocusEvent<HTMLInputElement>) => {
             e.target.style.borderColor = 'var(--border-subtle)';
             e.target.style.boxShadow = 'none';
           }}

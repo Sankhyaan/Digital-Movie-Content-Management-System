@@ -8,7 +8,7 @@ export default function Navbar() {
   const { watchlist } = useWatchlist();
   const navigate = useNavigate();
 
-  const handleSearch = (e) => {
+  const handleSearch = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (query.trim()) {
       navigate(`/search?q=${encodeURIComponent(query.trim())}`);
@@ -52,11 +52,11 @@ export default function Navbar() {
             { to: '/cinematch', label: 'Surprise Me! 🎲', special: true }]
             .map(({ to, label, special }) => (
               <Link key={to} to={to}
-                style={{ 
-                  color: special ? '#10b981' : 'var(--text-secondary)', 
-                  fontSize: '0.875rem', 
-                  fontWeight: special ? 700 : 500, 
-                  textDecoration: 'none', 
+                style={{
+                  color: special ? '#10b981' : 'var(--text-secondary)',
+                  fontSize: '0.875rem',
+                  fontWeight: special ? 700 : 500,
+                  textDecoration: 'none',
                   transition: 'all 0.15s',
                   background: special ? 'rgba(16,185,129,0.1)' : 'transparent',
                   padding: special ? '6px 14px' : '0',
