@@ -2,3 +2,4 @@ The objective of this project is to design and implement a fully normalized rela
 episodes, actors, genres, languages, and OTT platform availability using MySQL. The project demonstrates realworld application of DDL, DML, stored procedures, user-defined functions, triggers, cursors, transactions, views,
 and indexing.
    
+  
