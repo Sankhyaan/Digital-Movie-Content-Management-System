@@ -2,7 +2,7 @@
 
 CineVerse is a full-stack OTT content management web application modeled after modern platforms like Netflix. It integrates a highly normalized relational database with a responsive web interface to manage and explore movies, TV series, actors, genres, languages, and OTT platform availability.
 
-This documentation serves as the comprehensive guide for the system, compiling database design, SQL implementations (procedures, triggers, cursors, UDFs, transactions), application architecture, and deployment instructions derived from the project report and actual codebase. 
+This documentation serves as the comprehensive guide for the system, compiling database design, SQL implementations (procedures, triggers, cursors, UDFs, transactions), application architecture, and deployment instructions derived from the project report and actual codebase.
 
 ---
 
