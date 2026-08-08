@@ -78,7 +78,7 @@ export default function Footer() {
               lineHeight: 1.75,
               maxWidth: '260px',
             }}>
-              Your ultimate destination for movie information, reviews, and curated watchlists. Discover cinema like never before.
+              Your go-to destination for movie info, ratings, and curated watchlists. Explore and discover cinema like never before.
             </p>
           </div>
 
@@ -179,7 +179,7 @@ export default function Footer() {
           alignItems: 'center',
           justifyContent: 'space-between',
           flexWrap: 'wrap',
-          gap: '16px',
+          gap: '20px',
         }}>
           {/* Copyright */}
           <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
