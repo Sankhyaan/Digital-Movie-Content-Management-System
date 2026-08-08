@@ -21,7 +21,7 @@ export default function HeroCarousel({ movies = [] }: HeroCarouselProps) {
 
   useEffect(() => {
     if (movies.length <= 1) return;
-    const t = setInterval(next, 7000);
+    const t = setInterval(next, 6000);
     return () => clearInterval(t);
   }, [next, movies.length]);
 
@@ -131,7 +131,7 @@ export default function HeroCarousel({ movies = [] }: HeroCarouselProps) {
       ] as const).map(({ dir, label, fn }) => (
         <button key={dir} onClick={fn} style={{
           position: 'absolute', [dir]: '20px', top: '50%', transform: 'translateY(-50%)',
-          width: '40px', height: '40px', borderRadius: '50%',
+          width: '44px', height: '44px', borderRadius: '50%',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           background: 'rgba(6,6,9,0.6)', border: '1px solid rgba(16,185,129,0.20)',
           color: '#f0fdf4', cursor: 'pointer', fontSize: '1.4rem', backdropFilter: 'blur(8px)',
