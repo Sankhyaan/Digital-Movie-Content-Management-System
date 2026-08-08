@@ -59,13 +59,13 @@ export default function WatchlistPage() {
             fontSize: '2rem',
             marginBottom: '20px',
           }}>
-            📑
+            🎬
           </div>
           <h3 style={{ fontSize: '1.2rem', fontWeight: 700, marginBottom: '8px' }}>
             Your watchlist is empty
           </h3>
           <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', maxWidth: '380px', marginBottom: '24px' }}>
-            Click the + button on any title to save it here for later.
+            Browse titles and hit the + button on any movie or show to save it here.
           </p>
           <Link
             to="/"
