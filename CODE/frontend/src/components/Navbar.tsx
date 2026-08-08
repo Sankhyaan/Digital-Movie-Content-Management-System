@@ -32,7 +32,7 @@ export default function Navbar() {
         display: 'flex', alignItems: 'center', gap: '28px',
       }}>
         {/* Logo */}
-        <Link to="/" style={{ display: 'flex', alignItems: 'center', gap: '10px', textDecoration: 'none', flexShrink: 0 }}>
+        <Link to="/" title="CineVerse Home" style={{ display: 'flex', alignItems: 'center', gap: '10px', textDecoration: 'none', flexShrink: 0 }}>
           <div style={{
             width: '38px', height: '38px', borderRadius: '10px',
             background: 'linear-gradient(135deg, #10b981, #065f46)',
@@ -90,7 +90,7 @@ export default function Navbar() {
               onFocus={() => setFocused(true)} onBlur={() => setFocused(false)}
               placeholder="Search movies..." id="nav-search-input" autoComplete="off"
               style={{
-                width: focused ? '260px' : '220px', height: '38px',
+                width: focused ? '280px' : '220px', height: '38px',
                 paddingLeft: '36px', paddingRight: query ? '34px' : '14px',
                 paddingTop: 0, paddingBottom: 0,
                 fontSize: '0.84rem', fontFamily: 'inherit',
