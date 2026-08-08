@@ -36,7 +36,7 @@ export default function MovieCard({ movie, index = 0 }: MovieCardProps) {
         transition: 'transform 0.28s cubic-bezier(0.4,0,0.2,1), box-shadow 0.28s',
         border: '1px solid rgba(16,185,129,0.08)',
       }}
-        onMouseEnter={(e) => { e.currentTarget.style.transform = 'scale(1.055) translateY(-6px)'; e.currentTarget.style.boxShadow = '0 12px 40px rgba(16,185,129,0.22)'; e.currentTarget.style.borderColor = 'rgba(16,185,129,0.28)'; }}
+        onMouseEnter={(e) => { e.currentTarget.style.transform = 'scale(1.055) translateY(-8px)'; e.currentTarget.style.boxShadow = '0 16px 48px rgba(16,185,129,0.28)'; e.currentTarget.style.borderColor = 'rgba(16,185,129,0.35)'; }}
         onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1) translateY(0)'; e.currentTarget.style.boxShadow = '0 4px 24px rgba(0,0,0,0.55)'; e.currentTarget.style.borderColor = 'rgba(16,185,129,0.08)'; }}
       >
         <img src={src} alt={movie.title} loading="lazy"
