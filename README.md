@@ -25,10 +25,6 @@
 
 ### 🚀 **[Live Website: http://13.203.136.117:3000](http://13.203.136.117:3000)**
 
-<br/>
-
-[![CineVerse Hero Preview](assets/hero_banner.png)](http://13.203.136.117:3000)
-
 </div>
 
 ---
@@ -70,26 +66,6 @@ It features an in-app official YouTube trailer player, instant **0ms page loads*
 * 🌐 **Multilingual Audio & Subtitle Tracking**: Distinguishes between `Original`, `Dubbed`, and `Subtitle` language tracks across global film libraries.
 * 🚀 **High-Throughput Backend Optimization**: Uses pre-indexed $O(1)$ Hash Map hydration in Node.js instead of nested array filters, reducing database relation assembly time from ~1000ms to **under 35ms**.
 
----
-
-## 📸 Visual Showcase
-
-### 1. Title Details & Verified Streaming Routing
-> *Clean, distraction-free platform cards with direct action buttons (`Watch on [Platform] ↗`) and official in-app trailer viewer.*
-
-<div align="center">
-  <img src="assets/movie_detail.png" alt="Euphoria JioHotstar Routing" width="49%" />
-  <img src="assets/streaming_routing.png" alt="The Boys Prime Video Routing" width="49%" />
-</div>
-
-<br/>
-
-### 2. Live Catalog Search & Multivariable Filtering
-> *Real-time exploration across 3,200+ titles with instantaneous genre, media type, and release year filtering.*
-
-<div align="center">
-  <img src="assets/explore.png" alt="Explore and Search View" width="98%" />
-</div>
 
 ---
 
@@ -217,62 +193,6 @@ npm run dev
 ```
 > Open **`http://localhost:3000`** in your browser.
 
----
-
-## ☁️ Continuous AWS Deployment (CI/CD)
-
-CineVerse is configured for zero-downtime Continuous Deployment using **GitHub Actions**, **AWS EC2 (Ubuntu)**, and **Nginx**:
-
-```mermaid
-sequenceDiagram
-    autonumber
-    Developer->>GitHub: git push origin main
-    GitHub->>GitHub Actions: Trigger deploy.yml
-    GitHub Actions->>GitHub Actions: npm run build (Backend + Frontend)
-    GitHub Actions->>AWS EC2: Secure SSH Deployment
-    AWS EC2->>PM2: pm2 restart cineverse-backend
-    AWS EC2->>Nginx: Reload Nginx (Static Dist Bundle)
-    AWS EC2-->>Developer: Live on production in <30 seconds!
-```
-
-### GitHub Actions Deployment Workflow (`.github/workflows/deploy.yml`)
-```yaml
-name: CineVerse Auto-Deploy
-
-on:
-  push:
-    branches: [ main ]
-
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-
-      - name: Build Bundles
-        run: |
-          cd backend && npm ci && npm run build
-          cd ../frontend && npm ci && npm run build
-
-      - name: Deploy to AWS EC2
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ubuntu
-          key: ${{ secrets.EC2_SSH_KEY }}
-          script: |
-            cd /var/www/cineverse
-            git pull origin main
-            cd backend && npm ci && npm run build
-            pm2 restart cineverse-backend || pm2 start dist/server.js --name "cineverse-backend"
-            cd ../frontend && npm ci && npm run build
-            sudo rm -rf /var/www/cineverse/frontend/dist
-            sudo cp -r dist /var/www/cineverse/frontend/
-            sudo systemctl reload nginx
-```
 
 ---
 
@@ -288,7 +208,6 @@ jobs:
 │   ├── src/                  # Components, pages, context & SWR cache API
 │   ├── index.html
 │   └── package.json
-├── assets/                   # High-resolution documentation preview screenshots
 ├── scripts/                  # Data ingestion & provider sanitization scripts
 ├── .gitignore                # Root gitignore
 └── README.md                 # Interactive documentation
