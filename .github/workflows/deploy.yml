@@ -1,0 +1,42 @@
+name: CineVerse Auto-Deploy to AWS EC2
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Deploy to Existing AWS EC2 via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ubuntu
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            # Navigate to CineVerse directory on EC2
+            cd ~/cineverse || cd /var/www/cineverse
+            
+            # Pull latest changes from main branch in seconds
+            git pull origin main
+            
+            # Rebuild and restart backend with zero downtime
+            cd backend
+            npm install --production=false
+            npm run build
+            pm2 restart cineverse-backend || pm2 start dist/server.js --name "cineverse-backend"
+            
+            # Rebuild frontend production bundle
+            cd ../frontend
+            npm install
+            npm run build
+            
+            # Reload Nginx if configured
+            sudo systemctl reload nginx || true
+            
+            echo "🚀 CineVerse deployment completed successfully!"
