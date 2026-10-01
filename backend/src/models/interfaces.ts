@@ -22,9 +22,10 @@
 
 /** An actor that appears in a piece of content. */
 export interface Actor {
-  actorId:  number;    // actor.actor_id
-  name:     string;    // actor.name
-  roleName: string | null;  // content_actor.role_name
+  actorId:     number;        // actor.actor_id
+  name:        string;        // actor.name
+  profilePath: string | null; // actor.profile_path
+  roleName:    string | null; // content_actor.role_name
 }
 
 /** A language linked to a content item. */
@@ -70,7 +71,9 @@ export interface Content {
   tmdbId:       number | null; // content.tmdb_id
   posterPath:   string | null; // content.poster_path
   rating:       number | null; // content.rating
-  description:  string | null; // content.description (added via ALTER TABLE)
+  description:  string | null; // content.description
+  backdropPath: string | null; // content.backdrop_path
+  trailerKey:   string | null; // content.trailer_key
 
   // Movie-specific (null for Series)
   duration:     number | null; // movie.duration
@@ -93,6 +96,8 @@ export interface ContentFilters {
   year?:     string;
   language?: string;
   type?:     'Movie' | 'Series';
+  limit?:    number | string;
+  offset?:   number | string;
 }
 
 // Aliases so controller/service files compile without modification

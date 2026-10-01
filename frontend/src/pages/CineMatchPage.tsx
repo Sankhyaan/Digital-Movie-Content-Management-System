@@ -42,7 +42,7 @@ const QUESTIONS: Question[] = [
     id: 'vibe',
     title: 'What kind of vibe are you looking for today?',
     options: [
-      { label: '🤯 Blow my mind!', value: 'Science Fiction' },
+      { label: '🤯 Blow my mind!', value: 'Sci-Fi & Fantasy' },
       { label: '😂 Make me laugh out loud.', value: 'Comedy' },
       { label: '💥 Keep me on the edge of my seat.', value: 'Action' },
       { label: '❤️ Something heartfelt and emotional.', value: 'Drama' },

@@ -29,7 +29,7 @@ export default function HeroCarousel({ movies = [] }: HeroCarouselProps) {
 
   const movie   = movies[current];
   const poster  = posterUrl(movie.posterPath, movie.title);
-  const bd      = backdropUrl(movie.posterPath) || poster;
+  const bd      = backdropUrl(movie.backdropPath) || backdropUrl(movie.posterPath) || poster;
   const rating  = movie.rating != null ? Number(movie.rating).toFixed(1) : null;
   const year    = movie.releaseYear ?? '';
   const dur     = movie.type === 'Movie' && movie.duration ? `${movie.duration} min` : null;

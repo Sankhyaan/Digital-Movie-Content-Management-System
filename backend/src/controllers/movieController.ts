@@ -26,6 +26,8 @@ export class MovieController {
         search:   req.query.search   as string | undefined,
         language: req.query.language as string | undefined,
         type:     typeParam === 'Movie' || typeParam === 'Series' ? typeParam : undefined,
+        limit:    req.query.limit    ? parseInt(req.query.limit as string, 10) : undefined,
+        offset:   req.query.offset   ? parseInt(req.query.offset as string, 10) : undefined,
       };
       const items = await this.service.getAllMovies(filters);
       res.json({ success: true, count: items.length, data: items });

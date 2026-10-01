@@ -140,7 +140,7 @@ export default function Footer() {
             </ul>
           </div>
 
-          {/* Project Info column */}
+          {/* Platform & Legal column */}
           <div>
             <h4 style={{
               fontFamily: "'Outfit', sans-serif",
@@ -151,16 +151,33 @@ export default function Footer() {
               color: 'var(--accent-primary)',
               marginBottom: '20px',
             }}>
-              Project Info
+              Legal & Support
             </h4>
             <ul style={{ listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '12px' }}>
               {[
-                'DBMS Course Project',
-                'Shiv Nadar University',
-                'Built with React + Express',
-                'MySQL Database Backend',
-              ].map((item) => (
-                <li key={item} style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>{item}</li>
+                { label: 'About CineVerse', href: '#' },
+                { label: 'Help Center', href: '#' },
+                { label: 'Supported Devices', href: '#' },
+                { label: 'Terms of Use', href: '#' },
+                { label: 'Privacy Policy', href: '#' },
+                { label: 'Cookie Preferences', href: '#' },
+              ].map(({ label, href }) => (
+                <li key={label}>
+                  <a
+                    href={href}
+                    onClick={(e) => e.preventDefault()}
+                    style={{
+                      fontSize: '0.875rem',
+                      color: 'var(--text-secondary)',
+                      textDecoration: 'none',
+                      transition: 'color 0.18s',
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--accent-bright)')}
+                    onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-secondary)')}
+                  >
+                    {label}
+                  </a>
+                </li>
               ))}
             </ul>
           </div>
@@ -183,42 +200,53 @@ export default function Footer() {
         }}>
           {/* Copyright */}
           <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-            © {year} CineVerse. All rights reserved.
+            © {year} CineVerse Entertainment, Inc. All rights reserved.
           </p>
 
-          {/* Team credit — centred */}
+          {/* Quick Legal Links */}
           <div style={{
             display: 'flex',
             alignItems: 'center',
-            gap: '10px',
-            padding: '10px 22px',
-            borderRadius: '99px',
-            background: 'rgba(16, 185, 129, 0.06)',
-            border: '1px solid rgba(16, 185, 129, 0.16)',
+            gap: '16px',
+            fontSize: '0.8rem',
+            color: 'var(--text-muted)',
+            flexWrap: 'wrap',
           }}>
-            <span style={{ fontSize: '1rem' }}>✦</span>
-            <span style={{
-              fontFamily: "'Outfit', sans-serif",
-              fontSize: '0.82rem',
-              fontWeight: 600,
-              color: 'var(--text-accent)',
-              letterSpacing: '0.04em',
-            }}>
-              Done by&nbsp;
-              <strong style={{ color: 'var(--accent-bright)' }}>Sankhyaan</strong>
-              <span style={{ color: 'var(--text-muted)', margin: '0 6px' }}>·</span>
-              <strong style={{ color: 'var(--accent-bright)' }}>Saketh</strong>
-              <span style={{ color: 'var(--text-muted)', margin: '0 6px' }}>·</span>
-              <strong style={{ color: 'var(--accent-bright)' }}>Priya</strong>
-              <span style={{ color: 'var(--text-muted)', margin: '0 6px' }}>·</span>
-              <strong style={{ color: 'var(--accent-bright)' }}>Abhinay</strong>
-            </span>
-            <span style={{ fontSize: '1rem' }}>✦</span>
+            {['Privacy Policy', 'Terms of Service', 'Legal Notices', 'FAQ'].map((item) => (
+              <a
+                key={item}
+                href="#"
+                onClick={(e) => e.preventDefault()}
+                style={{
+                  color: 'var(--text-muted)',
+                  textDecoration: 'none',
+                  transition: 'color 0.18s',
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--text-secondary)')}
+                onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-muted)')}
+              >
+                {item}
+              </a>
+            ))}
           </div>
 
-          <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-            DBMS Project {year}
-          </p>
+          {/* Quality Badge */}
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            padding: '6px 14px',
+            borderRadius: '99px',
+            background: 'rgba(16, 185, 129, 0.06)',
+            border: '1px solid rgba(16, 185, 129, 0.15)',
+            fontSize: '0.78rem',
+            color: 'var(--text-accent)',
+            fontFamily: "'Outfit', sans-serif",
+            fontWeight: 500,
+          }}>
+            <span>🎬</span>
+            <span>4K Ultra HD · Dolby Atmos</span>
+          </div>
         </div>
       </div>
     </footer>

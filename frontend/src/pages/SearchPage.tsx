@@ -84,7 +84,8 @@ function SearchInput({ value, onChange, onSubmit }: SearchInputProps) {
   );
 }
 
-const YEARS = Array.from({ length: 35 }, (_, i) => (2025 - i).toString());
+const currentYear = new Date().getFullYear();
+const YEARS = Array.from({ length: 35 }, (_, i) => (currentYear - i).toString());
 
 export default function SearchPage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -153,13 +154,13 @@ export default function SearchPage() {
     borderRadius: '8px',
     fontSize: '0.78rem',
     fontWeight: 600,
-    border: `1px solid ${active ? 'var(--accent-primary)' : 'rgba(220,38,38,0.15)'}`,
-    background: active ? 'var(--gradient-accent)' : 'rgba(22,4,4,0.6)',
+    border: `1px solid ${active ? 'var(--accent-primary)' : 'rgba(16,185,129,0.15)'}`,
+    background: active ? 'var(--gradient-accent)' : 'rgba(13,20,13,0.6)',
     color: active ? '#fff' : 'var(--text-secondary)',
     cursor: 'pointer',
     transition: 'all 0.18s',
     whiteSpace: 'nowrap',
-    boxShadow: active ? '0 2px 10px rgba(220,38,38,0.3)' : 'none',
+    boxShadow: active ? '0 2px 10px rgba(16,185,129,0.3)' : 'none',
   });
 
   return (

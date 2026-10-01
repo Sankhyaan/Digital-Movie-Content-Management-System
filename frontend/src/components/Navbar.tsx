@@ -3,8 +3,9 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useWatchlist } from '../context/WatchlistContext';
 
 export default function Navbar() {
-  const [query, setQuery]     = useState('');
-  const [focused, setFocused] = useState(false);
+  const [query, setQuery]           = useState('');
+  const [focused, setFocused]       = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
   const { watchlist } = useWatchlist();
   const navigate = useNavigate();
 
@@ -13,8 +14,16 @@ export default function Navbar() {
     if (query.trim()) {
       navigate(`/search?q=${encodeURIComponent(query.trim())}`);
       setQuery('');
+      setMobileOpen(false);
     }
   };
+
+  const navItems = [
+    { to: '/', label: 'Home' },
+    { to: '/search', label: 'Explore' },
+    { to: '/watchlist', label: watchlist.length > 0 ? `Watchlist (${watchlist.length})` : 'Watchlist' },
+    { to: '/cinematch', label: 'Surprise Me! 🎲', special: true },
+  ];
 
   return (
     <nav id="main-navbar" style={{
@@ -46,33 +55,30 @@ export default function Navbar() {
         </Link>
 
         {/* Nav links */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '28px', flexShrink: 0 }}>
-          {[{ to: '/', label: 'Home' }, { to: '/search', label: 'Explore' },
-            { to: '/watchlist', label: watchlist.length > 0 ? `Watchlist (${watchlist.length})` : 'Watchlist' },
-            { to: '/cinematch', label: 'Surprise Me! 🎲', special: true }]
-            .map(({ to, label, special }) => (
-              <Link key={to} to={to}
-                style={{
-                  color: special ? '#10b981' : 'var(--text-secondary)',
-                  fontSize: '0.875rem',
-                  fontWeight: special ? 700 : 500,
-                  textDecoration: 'none',
-                  transition: 'all 0.15s',
-                  background: special ? 'rgba(16,185,129,0.1)' : 'transparent',
-                  padding: special ? '6px 14px' : '0',
-                  borderRadius: special ? '10px' : '0',
-                  border: special ? '1px solid rgba(16,185,129,0.2)' : 'none'
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.color = '#34d399';
-                  if (special) e.currentTarget.style.background = 'rgba(16,185,129,0.15)';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.color = special ? '#10b981' : 'var(--text-secondary)';
-                  if (special) e.currentTarget.style.background = 'rgba(16,185,129,0.1)';
-                }}
-              >{label}</Link>
-            ))}
+        <div className="nav-links" style={{ display: 'flex', alignItems: 'center', gap: '28px', flexShrink: 0 }}>
+          {navItems.map(({ to, label, special }) => (
+            <Link key={to} to={to}
+              style={{
+                color: special ? '#10b981' : 'var(--text-secondary)',
+                fontSize: '0.875rem',
+                fontWeight: special ? 700 : 500,
+                textDecoration: 'none',
+                transition: 'all 0.15s',
+                background: special ? 'rgba(16,185,129,0.1)' : 'transparent',
+                padding: special ? '6px 14px' : '0',
+                borderRadius: special ? '10px' : '0',
+                border: special ? '1px solid rgba(16,185,129,0.2)' : 'none'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.color = '#34d399';
+                if (special) e.currentTarget.style.background = 'rgba(16,185,129,0.15)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.color = special ? '#10b981' : 'var(--text-secondary)';
+                if (special) e.currentTarget.style.background = 'rgba(16,185,129,0.1)';
+              }}
+            >{label}</Link>
+          ))}
         </div>
 
         <div style={{ flex: 1 }} />
@@ -90,7 +96,7 @@ export default function Navbar() {
               onFocus={() => setFocused(true)} onBlur={() => setFocused(false)}
               placeholder="Search movies..." id="nav-search-input" autoComplete="off"
               style={{
-                width: focused ? '280px' : '220px', height: '38px',
+                width: focused ? '280px' : '200px', height: '38px',
                 paddingLeft: '36px', paddingRight: query ? '34px' : '14px',
                 paddingTop: 0, paddingBottom: 0,
                 fontSize: '0.84rem', fontFamily: 'inherit',
@@ -111,7 +117,66 @@ export default function Navbar() {
             )}
           </div>
         </form>
+
+        {/* Mobile menu button */}
+        <button
+          className="mobile-menu-btn"
+          aria-label="Toggle mobile menu"
+          style={{
+            display: 'none',
+            background: 'rgba(16,185,129,0.1)',
+            border: '1px solid rgba(16,185,129,0.25)',
+            color: '#f0fdf4',
+            cursor: 'pointer',
+            fontSize: '1.25rem',
+            width: '38px',
+            height: '38px',
+            borderRadius: '9px',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+          onClick={() => setMobileOpen(v => !v)}
+        >
+          {mobileOpen ? '✕' : '☰'}
+        </button>
       </div>
+
+      {/* Mobile dropdown */}
+      {mobileOpen && (
+        <div style={{
+          position: 'fixed',
+          top: 'var(--navbar-height)',
+          left: 0,
+          right: 0,
+          background: 'rgba(6,6,9,0.98)',
+          backdropFilter: 'blur(20px)',
+          borderBottom: '1px solid rgba(16,185,129,0.25)',
+          padding: '16px 28px',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '4px',
+          boxShadow: '0 10px 40px rgba(0,0,0,0.8)',
+        }}>
+          {navItems.map(({ to, label }) => (
+            <Link
+              key={to}
+              to={to}
+              onClick={() => setMobileOpen(false)}
+              style={{
+                display: 'block',
+                padding: '12px 8px',
+                color: 'var(--text-primary)',
+                textDecoration: 'none',
+                fontSize: '0.95rem',
+                fontWeight: 600,
+                borderBottom: '1px solid rgba(255,255,255,0.05)',
+              }}
+            >
+              {label}
+            </Link>
+          ))}
+        </div>
+      )}
     </nav>
   );
 }

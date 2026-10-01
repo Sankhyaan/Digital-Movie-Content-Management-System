@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { fetchMovieById, posterUrl, backdropUrl } from '../api/movieApi';
+import { fetchMovieById, posterUrl, backdropUrl, actorProfileUrl, getCachedData } from '../api/movieApi';
 import type { MovieDetail } from '../api/movieApi';
 import { useWatchlist } from '../context/WatchlistContext';
 import React from 'react';
@@ -31,6 +31,44 @@ const langName = (raw = ''): string => {
   if (lower.length <= 3) return raw.toUpperCase();
   // Otherwise it's already a full name (e.g. stored as "English")
   return raw.charAt(0).toUpperCase() + raw.slice(1);
+};
+
+// ── Platform branding helper ──────────────────────────────────────────────────
+const getPlatformMeta = (name = '') => {
+  const n = name.toLowerCase();
+  if (n.includes('netflix'))  return { bg: 'rgba(229, 9, 20, 0.12)', border: 'rgba(229, 9, 20, 0.35)', icon: '🔴', accent: '#ff4d4d', brand: 'Netflix' };
+  if (n.includes('prime') || n.includes('amazon')) return { bg: 'rgba(0, 168, 225, 0.12)', border: 'rgba(0, 168, 225, 0.35)', icon: '🔵', accent: '#00a8e1', brand: 'Prime Video' };
+  if (n.includes('apple'))    return { bg: 'rgba(255, 255, 255, 0.10)', border: 'rgba(255, 255, 255, 0.25)', icon: '🍎', accent: '#f5f5f7', brand: 'Apple TV+' };
+  if (n.includes('hotstar') || n.includes('jiohotstar')) return { bg: 'rgba(17, 60, 207, 0.15)', border: 'rgba(17, 60, 207, 0.40)', icon: '🌟', accent: '#4a90e2', brand: 'Disney+ Hotstar' };
+  if (n.includes('disney'))   return { bg: 'rgba(17, 60, 207, 0.15)', border: 'rgba(17, 60, 207, 0.40)', icon: '🌟', accent: '#4a90e2', brand: 'Disney+' };
+  if (n.includes('hbo') || n.includes('max')) return { bg: 'rgba(153, 51, 204, 0.15)', border: 'rgba(153, 51, 204, 0.40)', icon: '🟣', accent: '#b968f0', brand: 'Max' };
+  if (n.includes('paramount')) return { bg: 'rgba(0, 100, 210, 0.14)', border: 'rgba(0, 100, 210, 0.35)', icon: '⭐', accent: '#0064d2', brand: 'Paramount+' };
+  if (n.includes('crunchyroll')) return { bg: 'rgba(255, 106, 0, 0.14)', border: 'rgba(255, 106, 0, 0.35)', icon: '🟠', accent: '#ff6a00', brand: 'Crunchyroll' };
+  if (n.includes('sony') || n.includes('sonyliv')) return { bg: 'rgba(255, 120, 0, 0.14)', border: 'rgba(255, 120, 0, 0.35)', icon: '📺', accent: '#ff7800', brand: 'Sony LIV' };
+  if (n.includes('zee') || n.includes('zee5')) return { bg: 'rgba(140, 29, 219, 0.14)', border: 'rgba(140, 29, 219, 0.35)', icon: '📺', accent: '#b24bf3', brand: 'Zee5' };
+  if (n.includes('google')) return { bg: 'rgba(66, 133, 244, 0.14)', border: 'rgba(66, 133, 244, 0.35)', icon: '▶️', accent: '#4285f4', brand: 'Google Play Movies' };
+  if (n.includes('youtube')) return { bg: 'rgba(255, 0, 0, 0.14)', border: 'rgba(255, 0, 0, 0.35)', icon: '▶️', accent: '#ff3333', brand: 'YouTube' };
+  return { bg: 'rgba(16, 185, 129, 0.10)', border: 'rgba(16, 185, 129, 0.25)', icon: '📺', accent: 'var(--accent-bright)', brand: name };
+};
+
+// ── Direct Streaming Service Content Redirect URL ─────────────────────────────
+const getDirectPlatformUrl = (platformName = '', title = '') => {
+  const n = platformName.toLowerCase();
+  const q = encodeURIComponent(title);
+  if (n.includes('netflix'))  return `https://www.netflix.com/search?q=${q}`;
+  if (n.includes('prime') || n.includes('amazon')) return `https://www.primevideo.com/search/ref=atv_nb_sr?phrase=${q}`;
+  if (n.includes('apple'))    return `https://tv.apple.com/search?term=${q}`;
+  if (n.includes('hotstar') || n.includes('jiohotstar')) return `https://www.hotstar.com/in/explore?search_query=${q}`;
+  if (n.includes('disney'))   return `https://www.disneyplus.com/search?q=${q}`;
+  if (n.includes('hbo') || n.includes('max')) return `https://play.max.com/search?q=${q}`;
+  if (n.includes('paramount')) return `https://www.paramountplus.com/search/?query=${q}`;
+  if (n.includes('peacock'))  return `https://www.peacocktv.com/search?q=${q}`;
+  if (n.includes('crunchyroll')) return `https://www.crunchyroll.com/search?q=${q}`;
+  if (n.includes('sony') || n.includes('sonyliv')) return `https://www.sonyliv.com/search/${q}`;
+  if (n.includes('zee') || n.includes('zee5')) return `https://www.zee5.com/search?q=${q}`;
+  if (n.includes('google'))   return `https://play.google.com/store/search?q=${q}&c=movies`;
+  if (n.includes('youtube'))  return `https://www.youtube.com/results?search_query=${encodeURIComponent(title + ' movie')}`;
+  return `https://www.justwatch.com/search?q=${q}`;
 };
 
 // ── tiny helpers ──────────────────────────────────────────────────────────────
@@ -81,27 +119,54 @@ function SectionLabel({ children }: SectionLabelProps) {
 
 export default function MovieDetailPage() {
   const { id } = useParams<{ id: string }>();
-  const [movie, setMovie]       = useState<MovieDetail | null>(null);
-  const [loading, setLoading]   = useState(true);
+  const initialMovie = id ? getCachedData<MovieDetail>('movie_detail_' + id) : null;
+  const [movie, setMovie]       = useState<MovieDetail | null>(initialMovie);
+  const [loading, setLoading]   = useState(!initialMovie);
   const [activeTab, setActive]  = useState('overview');
+  const [showTrailer, setShowTrailer] = useState(false);
   const { isInWatchlist, addToWatchlist, removeFromWatchlist } = useWatchlist();
 
   useEffect(() => {
-    async function load() {
+    let isMounted = true;
+    const cached = id ? getCachedData<MovieDetail>('movie_detail_' + id) : null;
+    if (cached) {
+      setMovie(cached);
+      setLoading(false);
+    } else {
       setLoading(true);
-      setActive('overview');
+    }
+    setActive('overview');
+
+    async function load() {
       try {
         const data = await fetchMovieById(id);
-        setMovie(data);
+        if (isMounted) {
+          setMovie(data);
+        }
       } catch (e) {
         console.error(e);
       } finally {
-        setLoading(false);
+        if (isMounted) setLoading(false);
       }
     }
     load();
     window.scrollTo(0, 0);
+
+    return () => {
+      isMounted = false;
+    };
   }, [id]);
+
+  // Escape key closes trailer modal
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setShowTrailer(false);
+    };
+    if (showTrailer) {
+      window.addEventListener('keydown', handleKeyDown);
+    }
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [showTrailer]);
 
   // ── Loading state ────────────────────────────────────────────────────────
   if (loading) {
@@ -135,14 +200,66 @@ export default function MovieDetailPage() {
   // ── Derived values ───────────────────────────────────────────────────────
   const inWatchlist = isInWatchlist(movie.contentId);
   const poster      = posterUrl(movie.posterPath, movie.title);
-  const backdrop    = backdropUrl(movie.posterPath) || poster;
+  const backdrop    = backdropUrl(movie.backdropPath) || backdropUrl(movie.posterPath) || poster;
   const rating      = movie.rating != null ? Number(movie.rating) : null;
   const year        = movie.releaseYear ?? '—';
   const duration    = movie.type === 'Movie' && movie.duration ? `${movie.duration} min` : null;
   const seasons     = movie.type === 'Series' && movie.totalSeasons ? `${movie.totalSeasons} Season${movie.totalSeasons > 1 ? 's' : ''}` : null;
-  const origLangRaw = movie.languages?.find(l => l.type === 'Original')?.languageName ?? movie.languages?.[0]?.languageName ?? null;
+
+  // Deduplicate and normalize languages
+  const uniqueLanguages = (() => {
+    const seen = new Set<string>();
+    const list: NonNullable<typeof movie.languages> = [];
+    for (const l of (movie.languages ?? [])) {
+      const clean = langName(l.languageName);
+      const key = `${clean.toLowerCase()}_${l.type}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        list.push({ ...l, languageName: clean });
+      }
+    }
+    return list;
+  })();
+
+  // Strictly filter to verified global streaming platforms only (reject Hulu & unverified channels)
+  const uniquePlatforms = (() => {
+    const isVerifiedPlatform = (raw = '') => {
+      const n = raw.trim().toLowerCase();
+      if (n.includes('hulu')) return false; // Hulu causes geoblock redirects outside US
+      return (
+        n.includes('netflix') ||
+        n.includes('prime') ||
+        n.includes('amazon') ||
+        n.includes('apple') ||
+        n.includes('hotstar') ||
+        n.includes('jiohotstar') ||
+        n.includes('disney') ||
+        n.includes('max') ||
+        n.includes('paramount') ||
+        n.includes('sony') ||
+        n.includes('zee') ||
+        n.includes('crunchyroll') ||
+        n.includes('google play') ||
+        n.includes('youtube')
+      );
+    };
+
+    const seen = new Set<string>();
+    const list: NonNullable<typeof movie.platforms> = [];
+    for (const p of (movie.platforms ?? [])) {
+      const clean = p.name.trim();
+      if (!isVerifiedPlatform(clean)) continue;
+      const key = clean.toLowerCase();
+      if (!seen.has(key)) {
+        seen.add(key);
+        list.push({ ...p, name: clean });
+      }
+    }
+    return list;
+  })();
+
+  const origLangRaw = uniqueLanguages.find(l => l.type === 'Original')?.languageName ?? uniqueLanguages[0]?.languageName ?? null;
   const origLang    = origLangRaw ? langName(origLangRaw) : null;
-  // Description — from content.description column (added via ALTER TABLE content ADD COLUMN description TEXT)
   const description = movie.description ?? null;
 
   const tabs = [
@@ -229,26 +346,79 @@ export default function MovieDetailPage() {
               {inWatchlist ? '✓ In Watchlist' : '+ Add to Watchlist'}
             </button>
 
+            {/* Watch Trailer button (available on 100% of titles) */}
+            <button
+              onClick={() => setShowTrailer(true)}
+              id="watch-trailer-btn"
+              style={{
+                width: '100%',
+                marginTop: '10px',
+                padding: '12px',
+                borderRadius: '10px',
+                fontFamily: 'inherit',
+                fontWeight: 700,
+                fontSize: '0.875rem',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '8px',
+                background: 'rgba(16,185,129,0.12)',
+                color: 'var(--accent-bright)',
+                border: '1px solid rgba(16,185,129,0.3)',
+                cursor: 'pointer',
+                transition: 'all 0.2s',
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(16,185,129,0.22)'; e.currentTarget.style.borderColor = 'var(--accent-primary)'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(16,185,129,0.12)'; e.currentTarget.style.borderColor = 'rgba(16,185,129,0.3)'; }}
+            >
+              ▶ Watch Official Trailer
+            </button>
+
             {/* Quick platform chips */}
-            {(movie.platforms ?? []).length > 0 && (
+            {uniquePlatforms.length > 0 && (
               <div style={{ marginTop: '20px' }}>
                 <p style={{ fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--text-muted)', marginBottom: '10px', fontWeight: 600 }}>
                   Streaming On
                 </p>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  {movie.platforms!.slice(0, 4).map(p => (
-                    <div key={p.platformId} style={{
-                      padding: '8px 12px',
-                      borderRadius: '8px',
-                      background: 'rgba(16,185,129,0.06)',
-                      border: '1px solid rgba(16,185,129,0.14)',
-                      fontSize: '0.8rem',
-                      color: 'var(--text-accent)',
-                      fontWeight: 500,
-                    }}>
-                      📺 {p.name}
-                    </div>
-                  ))}
+                  {uniquePlatforms.slice(0, 4).map(p => {
+                    const directUrl = getDirectPlatformUrl(p.name, movie.title);
+                    return (
+                      <a
+                        key={p.platformId}
+                        href={directUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{
+                          padding: '8px 12px',
+                          borderRadius: '8px',
+                          background: 'rgba(16,185,129,0.06)',
+                          border: '1px solid rgba(16,185,129,0.14)',
+                          fontSize: '0.8rem',
+                          color: 'var(--text-accent)',
+                          fontWeight: 500,
+                          textDecoration: 'none',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          transition: 'all 0.18s ease',
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.background = 'rgba(16,185,129,0.14)';
+                          e.currentTarget.style.borderColor = 'rgba(16,185,129,0.35)';
+                          e.currentTarget.style.color = 'var(--accent-bright)';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.background = 'rgba(16,185,129,0.06)';
+                          e.currentTarget.style.borderColor = 'rgba(16,185,129,0.14)';
+                          e.currentTarget.style.color = 'var(--text-accent)';
+                        }}
+                      >
+                        <span>📺 {p.name}</span>
+                        <span style={{ fontSize: '0.75rem', opacity: 0.7 }}>↗</span>
+                      </a>
+                    );
+                  })}
                 </div>
               </div>
             )}
@@ -358,9 +528,7 @@ export default function MovieDetailPage() {
                         margin: 0,
                         lineHeight: 1.6,
                       }}>
-                        Description field is empty for this title. Add data directly to the
-                        <code style={{ background: 'rgba(16,185,129,0.10)', padding: '1px 6px', borderRadius: '4px', fontSize: '0.8rem', margin: '0 4px' }}>description</code>
-                        column in the <code style={{ background: 'rgba(16,185,129,0.10)', padding: '1px 6px', borderRadius: '4px', fontSize: '0.8rem', margin: '0 4px' }}>content</code> table to display it here.
+                        No description available for this title.
                       </p>
                     )}
                   </div>
@@ -380,7 +548,7 @@ export default function MovieDetailPage() {
                   </div>
 
                   {/* ── Available Languages ─────────────────────────── */}
-                  {(movie.languages ?? []).length > 0 && (
+                  {uniqueLanguages.length > 0 && (
                     <div style={{
                       background: 'rgba(13,20,13,0.70)',
                       border: '1px solid rgba(16,185,129,0.10)',
@@ -391,7 +559,7 @@ export default function MovieDetailPage() {
                         Available Languages
                       </p>
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                        {movie.languages!.map(l => (
+                        {uniqueLanguages.map(l => (
                           <span key={`${l.languageId}-${l.type}`} className="accent-badge">
                             {langName(l.languageName)}
                             <span style={{ opacity: 0.6, marginLeft: '5px', fontWeight: 400 }}>({l.type})</span>
@@ -434,17 +602,29 @@ export default function MovieDetailPage() {
                           onMouseLeave={(e) => (e.currentTarget.style.borderColor = 'rgba(16,185,129,0.10)')}
                         >
                           <div style={{
-                            width: '56px',
-                            height: '56px',
+                            width: '64px',
+                            height: '64px',
                             borderRadius: '50%',
+                            overflow: 'hidden',
                             background: 'rgba(16,185,129,0.10)',
-                            border: '2px solid rgba(16,185,129,0.20)',
+                            border: '2px solid rgba(16,185,129,0.25)',
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
-                            fontSize: '1.5rem',
+                            boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
                           }}>
-                            🎭
+                            {actor.profilePath ? (
+                              <img
+                                src={actorProfileUrl(actor.profilePath)!}
+                                alt={actor.name}
+                                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                                onError={(e) => {
+                                  (e.target as HTMLElement).style.display = 'none';
+                                }}
+                              />
+                            ) : (
+                              <span style={{ fontSize: '1.4rem' }}>🎭</span>
+                            )}
                           </div>
                           <div>
                             <p style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '4px' }}>
@@ -466,71 +646,146 @@ export default function MovieDetailPage() {
               {/* Platforms */}
               {activeTab === 'platforms' && (
                 <div>
-                  {(movie.platforms ?? []).length === 0 ? (
-                    <div style={{ padding: '40px 0', textAlign: 'center', color: 'var(--text-muted)' }}>
-                      <span style={{ fontSize: '2.5rem', display: 'block', marginBottom: '12px' }}>📺</span>
-                      No platform information available.
+                  {uniquePlatforms.length === 0 ? (
+                    <div style={{
+                      padding: '36px 24px',
+                      textAlign: 'center',
+                      background: 'rgba(13,20,13,0.5)',
+                      borderRadius: '14px',
+                      border: '1px solid rgba(16,185,129,0.12)',
+                    }}>
+                      <span style={{ fontSize: '2rem', display: 'block', marginBottom: '10px' }}>🎬</span>
+                      <h4 style={{ fontFamily: "'Outfit', sans-serif", fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '6px' }}>
+                        Not Currently on Subscription Streaming
+                      </h4>
+                      <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', maxWidth: '440px', margin: '0 auto 16px', lineHeight: 1.5 }}>
+                        This title may currently be in theatrical release or available via digital purchase. You can verify real-time global availability:
+                      </p>
+                      <a
+                        href={`https://www.justwatch.com/search?q=${encodeURIComponent(movie.title)}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '8px',
+                          padding: '10px 20px',
+                          borderRadius: '10px',
+                          background: 'rgba(16,185,129,0.10)',
+                          border: '1px solid rgba(16,185,129,0.25)',
+                          color: 'var(--accent-bright)',
+                          fontFamily: "'Outfit', sans-serif",
+                          fontSize: '0.85rem',
+                          fontWeight: 700,
+                          textDecoration: 'none',
+                          transition: 'all 0.18s ease',
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.background = 'rgba(16,185,129,0.18)';
+                          e.currentTarget.style.borderColor = 'var(--accent-primary)';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.background = 'rgba(16,185,129,0.10)';
+                          e.currentTarget.style.borderColor = 'rgba(16,185,129,0.25)';
+                        }}
+                      >
+                        <span>Check Live Availability on JustWatch</span>
+                        <span>↗</span>
+                      </a>
                     </div>
                   ) : (
                     <div style={{
                       display: 'grid',
-                      gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
+                      gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))',
                       gap: '16px',
                     }}>
-                      {movie.platforms!.map(p => (
-                        <div key={p.platformId} style={{
-                          background: 'rgba(13,20,13,0.70)',
-                          border: '1px solid rgba(16,185,129,0.10)',
-                          borderRadius: '12px',
-                          padding: '20px 22px',
-                          transition: 'border-color 0.2s, box-shadow 0.2s',
-                        }}
-                          onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'rgba(16,185,129,0.30)'; e.currentTarget.style.boxShadow = '0 4px 20px rgba(16,185,129,0.10)'; }}
-                          onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'rgba(16,185,129,0.10)'; e.currentTarget.style.boxShadow = 'none'; }}
-                        >
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: p.region || p.availableFrom ? '14px' : 0 }}>
-                            <div style={{
-                              width: '40px',
-                              height: '40px',
-                              borderRadius: '10px',
-                              background: 'rgba(16,185,129,0.10)',
-                              border: '1px solid rgba(16,185,129,0.20)',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              fontSize: '1.2rem',
-                              flexShrink: 0,
-                            }}>
-                              📺
+                      {uniquePlatforms.map(p => {
+                        const meta = getPlatformMeta(p.name);
+                        const directUrl = getDirectPlatformUrl(p.name, movie.title);
+                        return (
+                          <div key={p.platformId} style={{
+                            background: 'rgba(13,20,13,0.70)',
+                            border: `1px solid ${meta.border}`,
+                            borderRadius: '14px',
+                            padding: '18px 20px',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            justifyContent: 'space-between',
+                            gap: '16px',
+                            transition: 'all 0.2s ease',
+                          }}
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.borderColor = meta.accent;
+                              e.currentTarget.style.boxShadow = `0 6px 24px ${meta.bg}`;
+                              e.currentTarget.style.transform = 'translateY(-2px)';
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.borderColor = meta.border;
+                              e.currentTarget.style.boxShadow = 'none';
+                              e.currentTarget.style.transform = 'translateY(0)';
+                            }}
+                          >
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                              <div style={{
+                                width: '44px',
+                                height: '44px',
+                                borderRadius: '12px',
+                                background: meta.bg,
+                                border: `1px solid ${meta.border}`,
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                fontSize: '1.35rem',
+                                flexShrink: 0,
+                              }}>
+                                {meta.icon}
+                              </div>
+                              <h4 style={{
+                                fontFamily: "'Outfit', sans-serif",
+                                fontSize: '1.05rem',
+                                fontWeight: 700,
+                                color: 'var(--text-primary)',
+                                margin: 0,
+                              }}>
+                                {p.name}
+                              </h4>
                             </div>
-                            <span style={{ fontFamily: "'Outfit', sans-serif", fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-                              {p.name}
-                            </span>
+
+                            <a
+                              href={directUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                gap: '8px',
+                                padding: '10px 16px',
+                                borderRadius: '10px',
+                                background: meta.bg,
+                                border: `1px solid ${meta.border}`,
+                                color: meta.accent,
+                                textDecoration: 'none',
+                                fontFamily: "'Outfit', sans-serif",
+                                fontSize: '0.85rem',
+                                fontWeight: 700,
+                                transition: 'all 0.18s ease',
+                              }}
+                              onMouseEnter={(e) => {
+                                e.currentTarget.style.filter = 'brightness(1.25)';
+                                e.currentTarget.style.transform = 'scale(1.02)';
+                              }}
+                              onMouseLeave={(e) => {
+                                e.currentTarget.style.filter = 'none';
+                                e.currentTarget.style.transform = 'scale(1)';
+                              }}
+                            >
+                              <span>Watch on {p.name}</span>
+                              <span style={{ fontSize: '0.9rem' }}>↗</span>
+                            </a>
                           </div>
-                          {(p.region || p.availableFrom || p.availableTill) && (
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                              {p.region && (
-                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem' }}>
-                                  <span style={{ color: 'var(--text-muted)' }}>Region</span>
-                                  <span style={{ color: 'var(--text-accent)', fontWeight: 500 }}>{p.region}</span>
-                                </div>
-                              )}
-                              {p.availableFrom && (
-                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem' }}>
-                                  <span style={{ color: 'var(--text-muted)' }}>From</span>
-                                  <span style={{ color: 'var(--text-secondary)' }}>{new Date(p.availableFrom).toLocaleDateString()}</span>
-                                </div>
-                              )}
-                              {p.availableTill && (
-                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem' }}>
-                                  <span style={{ color: 'var(--text-muted)' }}>Till</span>
-                                  <span style={{ color: 'var(--text-secondary)' }}>{new Date(p.availableTill).toLocaleDateString()}</span>
-                                </div>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
                 </div>
@@ -544,7 +799,9 @@ export default function MovieDetailPage() {
                       No episode data available.
                     </div>
                   ) : (
-                    movie.seasons!.map(season => (
+                    movie.seasons!
+                      .filter(season => season.seasonNumber > 0 && season.episodes.length > 0)
+                      .map(season => (
                       <div key={season.seasonId} style={{ marginBottom: '36px' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
                           <div style={{ width: '3px', height: '22px', borderRadius: '2px', background: 'var(--gradient-accent)', flexShrink: 0 }} />
@@ -610,6 +867,90 @@ export default function MovieDetailPage() {
 
       {/* SectionLabel used for future sections */}
       {false && <SectionLabel>placeholder</SectionLabel>}
+
+      {/* ── Trailer modal (Universal: Works for 100% of titles) ──────────── */}
+      {showTrailer && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 1000,
+          background: 'rgba(0,0,0,0.88)', backdropFilter: 'blur(10px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px'
+        }} onClick={() => setShowTrailer(false)}>
+          <div style={{
+            position: 'relative', width: '100%', maxWidth: '960px', aspectRatio: '16/9',
+            background: '#000', borderRadius: '16px', overflow: 'hidden',
+            boxShadow: '0 25px 70px rgba(0,0,0,0.9), 0 0 0 1px rgba(16,185,129,0.3)'
+          }} onClick={e => e.stopPropagation()}>
+            <div style={{
+              position: 'absolute', top: '14px', right: '14px', zIndex: 10,
+              display: 'flex', alignItems: 'center', gap: '10px',
+            }}>
+              <a
+                href={movie.trailerKey
+                  ? `https://www.youtube.com/watch?v=${movie.trailerKey}`
+                  : `https://www.youtube.com/results?search_query=${encodeURIComponent(movie.title + ' ' + (movie.releaseYear || '') + ' official trailer')}`
+                }
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{
+                  background: 'rgba(0,0,0,0.75)',
+                  border: '1px solid rgba(255,255,255,0.2)',
+                  color: '#fff',
+                  fontSize: '0.78rem',
+                  fontWeight: 600,
+                  borderRadius: '20px',
+                  padding: '6px 14px',
+                  textDecoration: 'none',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  backdropFilter: 'blur(8px)',
+                  transition: 'background 0.2s, border-color 0.2s',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = 'rgba(239, 68, 68, 0.85)';
+                  e.currentTarget.style.borderColor = 'rgba(239, 68, 68, 0.9)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'rgba(0,0,0,0.75)';
+                  e.currentTarget.style.borderColor = 'rgba(255,255,255,0.2)';
+                }}
+              >
+                <span>▶</span> Open on YouTube ↗
+              </a>
+              <button
+                onClick={() => setShowTrailer(false)}
+                aria-label="Close trailer modal"
+                style={{
+                  background: 'rgba(0,0,0,0.75)', border: '1px solid rgba(255,255,255,0.2)',
+                  color: '#fff', fontSize: '1.2rem',
+                  borderRadius: '50%', width: '36px', height: '36px', cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  backdropFilter: 'blur(8px)',
+                  transition: 'background 0.2s, border-color 0.2s',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = 'rgba(16,185,129,0.85)';
+                  e.currentTarget.style.borderColor = 'var(--accent-primary)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'rgba(0,0,0,0.75)';
+                  e.currentTarget.style.borderColor = 'rgba(255,255,255,0.2)';
+                }}
+              >✕</button>
+            </div>
+            <iframe
+              src={movie.trailerKey
+                ? `https://www.youtube-nocookie.com/embed/${movie.trailerKey}?autoplay=1&rel=0`
+                : `https://www.youtube-nocookie.com/embed?listType=search&list=${encodeURIComponent(movie.title + ' ' + (movie.releaseYear || '') + ' official trailer')}&autoplay=1&rel=0`
+              }
+              title={`${movie.title} Official Trailer`}
+              style={{ width: '100%', height: '100%', border: 'none' }}
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+              allowFullScreen
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

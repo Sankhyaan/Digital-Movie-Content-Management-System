@@ -1,10 +1,5 @@
-@import "tailwindcss";
-
-/* ═══════════════════════════════════════════════════════════════════════════
-   CINEVERSE — Dark Black + Light Green Design System
-   ═══════════════════════════════════════════════════════════════════════════ */
-
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Outfit:wght@400;500;600;700;800;900&display=swap');
+@import "tailwindcss";
 
 /* ── Design Tokens ─────────────────────────────────────────────────────────── */
 :root {
@@ -272,4 +267,78 @@ a { color: inherit; text-decoration: none; transition: color 0.18s; }
   border-radius: 99px;
   background: var(--gradient-accent);
   flex-shrink: 0;
+}
+
+/* ── Mobile Responsive Design ────────────────────────────────────────────── */
+@media (max-width: 1024px) {
+  :root {
+    --container-max: 100%;
+  }
+}
+
+@media (max-width: 768px) {
+  :root {
+    --navbar-height: 58px;
+  }
+
+  /* Navbar */
+  #main-navbar .nav-links {
+    display: none !important;
+  }
+  #main-navbar .mobile-menu-btn {
+    display: flex !important;
+  }
+
+  /* Hero carousel */
+  #hero-carousel {
+    height: 380px !important;
+  }
+  #hero-carousel .hero-poster {
+    display: none !important;
+  }
+  #hero-carousel h1 {
+    font-size: 1.6rem !important;
+  }
+
+  /* Movie detail page */
+  #movie-detail-page .detail-flex {
+    flex-direction: column !important;
+    gap: 24px !important;
+  }
+  #movie-detail-page .detail-poster {
+    width: 160px !important;
+    margin: 0 auto !important;
+  }
+
+  /* Grids */
+  .movie-grid {
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)) !important;
+    gap: 12px !important;
+  }
+
+  /* Category rows */
+  .category-row-scroll {
+    gap: 12px !important;
+  }
+
+  /* Page container paddings */
+  .page-container {
+    padding-left: 16px !important;
+    padding-right: 16px !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .movie-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 10px !important;
+  }
+
+  #hero-carousel {
+    height: 320px !important;
+  }
+
+  #hero-carousel h1 {
+    font-size: 1.35rem !important;
+  }
 }

@@ -19,12 +19,40 @@
 //                                 available_till, region)
 // =============================================================================
 
+import https from 'https';
 import { RowDataPacket } from 'mysql2/promise';
 import { pool }          from '../db/connection';
 import {
   Content, ContentFilters,
   Actor, ContentLanguage, Platform, Season, Episode,
 } from '../models/interfaces';
+
+/** Quick YouTube trailer resolver for contents without trailer_key */
+function resolveYouTubeTrailer(title: string, year?: number | null): Promise<string | null> {
+  return new Promise((resolve) => {
+    const q = encodeURIComponent(`${title} ${year || ''} official trailer`);
+    const req = https.get(`https://www.youtube.com/results?search_query=${q}`, (res) => {
+      let data = '';
+      res.on('data', chunk => {
+        data += chunk;
+        const m = data.match(/\/watch\?v=([a-zA-Z0-9_-]{11})/);
+        if (m) {
+          req.destroy();
+          resolve(m[1]);
+        }
+      });
+      res.on('end', () => {
+        const m = data.match(/\/watch\?v=([a-zA-Z0-9_-]{11})/);
+        resolve(m ? m[1] : null);
+      });
+    });
+    req.on('error', () => resolve(null));
+    req.setTimeout(2500, () => {
+      req.destroy();
+      resolve(null);
+    });
+  });
+}
 
 // ── Raw DB row types ──────────────────────────────────────────────────────────
 
@@ -37,15 +65,18 @@ interface ContentRow extends RowDataPacket {
   poster_path:   string | null;
   rating:        number | null;
   description:   string | null;   // content.description
+  backdrop_path: string | null;   // content.backdrop_path
+  trailer_key:   string | null;   // content.trailer_key
   duration:      number | null;   // from LEFT JOIN movie
   total_seasons: number | null;   // from LEFT JOIN series
 }
 
 interface ActorRow extends RowDataPacket {
-  content_id: number;
-  actor_id:   number;
-  name:       string;
-  role_name:  string | null;
+  content_id:   number;
+  actor_id:     number;
+  name:         string;
+  profile_path: string | null;
+  role_name:    string | null;
 }
 
 interface GenreRow extends RowDataPacket {
@@ -83,33 +114,35 @@ interface EpisodeRow extends RowDataPacket {
   duration:       number | null;
 }
 
-// ── Build a Content object from flat SQL rows ─────────────────────────────────
+// ── Pre-grouped lookups for O(1) content relation assembly ────────────────────
 
-function buildContent(
-  row:       ContentRow,
-  actors:    ActorRow[],
-  genres:    GenreRow[],
-  languages: LangRow[],
-  platforms: PlatformRow[],
-  seasons:   SeasonRow[],
-  episodes:  EpisodeRow[],
-): Content {
+interface ContentLookups {
+  actors:    Map<number, ActorRow[]>;
+  genres:    Map<number, GenreRow[]>;
+  languages: Map<number, LangRow[]>;
+  platforms: Map<number, PlatformRow[]>;
+  seasons:   Map<number, SeasonRow[]>;
+  episodes:  Map<number, EpisodeRow[]>;
+}
+
+function buildContent(row: ContentRow, lookups: ContentLookups): Content {
   const id = row.content_id;
+  const myActors    = lookups.actors.get(id)    || [];
+  const myGenres    = lookups.genres.get(id)    || [];
+  const myLanguages = lookups.languages.get(id) || [];
+  const myPlatforms = lookups.platforms.get(id) || [];
+  const mySeasons   = lookups.seasons.get(id)   || [];
 
-  const mySeasons: Season[] = seasons
-    .filter(s => s.series_id === id)
-    .map(s => ({
-      seasonId:     s.season_id,
-      seasonNumber: s.season_number ?? 0,
-      episodes: episodes
-        .filter(e => e.season_id === s.season_id)
-        .map((e): Episode => ({
-          episodeId:     e.episode_id,
-          title:         e.title,
-          episodeNumber: e.episode_number,
-          duration:      e.duration,
-        })),
-    }));
+  const seasonsList: Season[] = mySeasons.map(s => ({
+    seasonId:     s.season_id,
+    seasonNumber: s.season_number ?? 0,
+    episodes: (lookups.episodes.get(s.season_id) || []).map((e): Episode => ({
+      episodeId:     e.episode_id,
+      title:         e.title,
+      episodeNumber: e.episode_number,
+      duration:      e.duration,
+    })),
+  }));
 
   return {
     contentId:    id,
@@ -120,27 +153,55 @@ function buildContent(
     posterPath:   row.poster_path,
     rating:       row.rating !== null ? Number(row.rating) : null,
     description:  row.description ?? null,
+    backdropPath: row.backdrop_path ?? null,
+    trailerKey:   row.trailer_key ?? null,
     duration:     row.duration,
     totalSeasons: row.total_seasons,
-    seasons:      mySeasons,
-    genres:    genres.filter(g => g.content_id === id).map(g => g.genre_name),
-    actors:    actors.filter(a => a.content_id === id).map((a): Actor => ({
-      actorId:  a.actor_id,
-      name:     a.name,
-      roleName: a.role_name,
+    seasons:      seasonsList,
+    genres:       myGenres.map(g => g.genre_name),
+    actors:       myActors.map((a): Actor => ({
+      actorId:     a.actor_id,
+      name:        a.name,
+      profilePath: a.profile_path ?? null,
+      roleName:    a.role_name,
     })),
-    languages: languages.filter(l => l.content_id === id).map((l): ContentLanguage => ({
-      languageId:   l.language_id,
-      languageName: l.language_name,
-      type:         l.type,
-    })),
-    platforms: platforms.filter(p => p.content_id === id).map((p): Platform => ({
-      platformId:    p.platform_id,
-      name:          p.name,
-      availableFrom: p.available_from,
-      availableTill: p.available_till,
-      region:        p.region,
-    })),
+    // Deduplicate languages
+    languages: (() => {
+      const seen = new Set<string>();
+      const result: ContentLanguage[] = [];
+      for (const l of myLanguages) {
+        const key = `${l.language_name.trim().toLowerCase()}_${l.type}`;
+        if (!seen.has(key)) {
+          seen.add(key);
+          result.push({
+            languageId:   l.language_id,
+            languageName: l.language_name,
+            type:         l.type,
+          });
+        }
+      }
+      return result;
+    })(),
+
+    // Deduplicate platforms
+    platforms: (() => {
+      const seen = new Set<string>();
+      const result: Platform[] = [];
+      for (const p of myPlatforms) {
+        const key = p.name.trim().toLowerCase();
+        if (!seen.has(key)) {
+          seen.add(key);
+          result.push({
+            platformId:    p.platform_id,
+            name:          p.name,
+            availableFrom: p.available_from,
+            availableTill: p.available_till,
+            region:        p.region,
+          });
+        }
+      }
+      return result;
+    })(),
   };
 }
 
@@ -152,14 +213,28 @@ async function hydrateContent(rows: ContentRow[]): Promise<Content[]> {
   const ids = rows.map(r => r.content_id);
   const ph  = ids.map(() => '?').join(',');
 
+  const lookups: ContentLookups = {
+    actors:    new Map(),
+    genres:    new Map(),
+    languages: new Map(),
+    platforms: new Map(),
+    seasons:   new Map(),
+    episodes:  new Map(),
+  };
+
   // Actors
   const [actors] = await pool.query<ActorRow[]>(
-    `SELECT ca.content_id, ca.actor_id, a.name, ca.role_name
+    `SELECT ca.content_id, ca.actor_id, a.name, a.profile_path, ca.role_name
      FROM content_actor ca
      JOIN actor a ON a.actor_id = ca.actor_id
      WHERE ca.content_id IN (${ph})`,
     ids,
   );
+  for (const a of actors) {
+    let list = lookups.actors.get(a.content_id);
+    if (!list) { list = []; lookups.actors.set(a.content_id, list); }
+    list.push(a);
+  }
 
   // Genres
   const [genres] = await pool.query<GenreRow[]>(
@@ -169,6 +244,11 @@ async function hydrateContent(rows: ContentRow[]): Promise<Content[]> {
      WHERE cg.content_id IN (${ph})`,
     ids,
   );
+  for (const g of genres) {
+    let list = lookups.genres.get(g.content_id);
+    if (!list) { list = []; lookups.genres.set(g.content_id, list); }
+    list.push(g);
+  }
 
   // Languages
   const [languages] = await pool.query<LangRow[]>(
@@ -178,6 +258,11 @@ async function hydrateContent(rows: ContentRow[]): Promise<Content[]> {
      WHERE cl.content_id IN (${ph})`,
     ids,
   );
+  for (const l of languages) {
+    let list = lookups.languages.get(l.content_id);
+    if (!list) { list = []; lookups.languages.set(l.content_id, list); }
+    list.push(l);
+  }
 
   // Platforms
   const [platforms] = await pool.query<PlatformRow[]>(
@@ -188,36 +273,47 @@ async function hydrateContent(rows: ContentRow[]): Promise<Content[]> {
      WHERE cp.content_id IN (${ph})`,
     ids,
   );
+  for (const p of platforms) {
+    let list = lookups.platforms.get(p.content_id);
+    if (!list) { list = []; lookups.platforms.set(p.content_id, list); }
+    list.push(p);
+  }
 
   // Seasons + Episodes (only for Series)
   const seriesIds = rows.filter(r => r.type === 'Series').map(r => r.content_id);
-  let seasons:  SeasonRow[]  = [];
-  let episodes: EpisodeRow[] = [];
-
   if (seriesIds.length > 0) {
     const sph = seriesIds.map(() => '?').join(',');
-    [seasons] = await pool.query<SeasonRow[]>(
+    const [seasons] = await pool.query<SeasonRow[]>(
       `SELECT season_id, series_id, season_number
        FROM season
-       WHERE series_id IN (${sph})`,
+       WHERE series_id IN (${sph})
+         AND season_number > 0`,
       seriesIds,
     );
+    for (const s of seasons) {
+      let list = lookups.seasons.get(s.series_id);
+      if (!list) { list = []; lookups.seasons.set(s.series_id, list); }
+      list.push(s);
+    }
 
     if (seasons.length > 0) {
       const seasonIds = seasons.map(s => s.season_id);
       const eph = seasonIds.map(() => '?').join(',');
-      [episodes] = await pool.query<EpisodeRow[]>(
+      const [episodes] = await pool.query<EpisodeRow[]>(
         `SELECT episode_id, season_id, title, episode_number, duration
          FROM episode
          WHERE season_id IN (${eph})`,
         seasonIds,
       );
+      for (const e of episodes) {
+        let list = lookups.episodes.get(e.season_id);
+        if (!list) { list = []; lookups.episodes.set(e.season_id, list); }
+        list.push(e);
+      }
     }
   }
 
-  return rows.map(row =>
-    buildContent(row, actors, genres, languages, platforms, seasons, episodes),
-  );
+  return rows.map(row => buildContent(row, lookups));
 }
 
 // ── Base SELECT ───────────────────────────────────────────────────────────────
@@ -232,6 +328,8 @@ const BASE_SELECT = `
     c.poster_path,
     c.rating,
     c.description,
+    c.backdrop_path,
+    c.trailer_key,
     m.duration,
     s.total_seasons
   FROM content c
@@ -276,6 +374,18 @@ export class SQLMovieRepository {
     }
     sql += ' GROUP BY c.content_id ORDER BY c.release_year DESC';
 
+    if (filters?.limit) {
+      const limitNum = Math.max(1, parseInt(String(filters.limit), 10));
+      sql += ' LIMIT ?';
+      params.push(limitNum);
+
+      if (filters?.offset) {
+        const offsetNum = Math.max(0, parseInt(String(filters.offset), 10));
+        sql += ' OFFSET ?';
+        params.push(offsetNum);
+      }
+    }
+
     const [rows] = await pool.query<ContentRow[]>(sql, params);
     return hydrateContent(rows);
   }
@@ -287,21 +397,38 @@ export class SQLMovieRepository {
     );
     if (rows.length === 0) return null;
     const items = await hydrateContent(rows);
-    return items[0];
+    const item = items[0];
+    if (item && !item.trailerKey) {
+      try {
+        const ytKey = await resolveYouTubeTrailer(item.title, item.releaseYear);
+        if (ytKey) {
+          item.trailerKey = ytKey;
+          pool.query('UPDATE content SET trailer_key = ? WHERE content_id = ?', [ytKey, item.contentId]).catch(() => {});
+        }
+      } catch {
+        // Fallback gracefully without throwing
+      }
+    }
+    return item;
   }
 
-  /** Featured — top rated (rating >= 8.0), up to 10 items */
+  /** Featured — top rated (rating >= 8.0), up to 10 items with backdrops for hero display */
   async getFeatured(): Promise<Content[]> {
     const [rows] = await pool.query<ContentRow[]>(
-      `${BASE_SELECT} WHERE c.rating >= 8.0 ORDER BY c.rating DESC LIMIT 10`,
+      `${BASE_SELECT} WHERE c.rating >= 8.0 AND c.rating <= 10.0 ORDER BY (c.backdrop_path IS NOT NULL) DESC, c.rating DESC LIMIT 10`,
     );
     return hydrateContent(rows);
   }
 
-  /** Trending — most recently released, up to 20 items */
+  /** Trending — most recently released high-rated content, up to 20 items */
   async getTrending(): Promise<Content[]> {
     const [rows] = await pool.query<ContentRow[]>(
-      `${BASE_SELECT} ORDER BY c.release_year DESC LIMIT 20`,
+      `${BASE_SELECT}
+       WHERE c.release_year <= YEAR(CURDATE())
+         AND c.rating IS NOT NULL
+         AND c.rating >= 6.5
+       ORDER BY c.release_year DESC, c.rating DESC
+       LIMIT 20`,
     );
     return hydrateContent(rows);
   }
