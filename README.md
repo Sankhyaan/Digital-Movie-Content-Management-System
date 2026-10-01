@@ -3,6 +3,7 @@
 # CineVerse 🎬
 ### Next-Gen Over-The-Top (OTT) Streaming Discovery & Content Management Engine
 
+[![Live Demo](https://img.shields.io/badge/Live%20Demo-http%3A%2F%2F13.203.136.117%3A3000-00E5FF?style=for-the-badge&logo=googlechrome&logoColor=black)](http://13.203.136.117:3000)
 [![React](https://img.shields.io/badge/React-18.3-61DAFB?style=for-the-badge&logo=react&logoColor=black)](https://react.dev/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.5-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Node.js](https://img.shields.io/badge/Node.js-22.x-339933?style=for-the-badge&logo=node.js&logoColor=white)](https://nodejs.org/)
@@ -22,9 +23,32 @@
 
 <br/>
 
-[![CineVerse Hero Preview](assets/hero_banner.png)](assets/hero_banner.png)
+### 🚀 **[Live Website: http://13.203.136.117:3000](http://13.203.136.117:3000)**
+
+<br/>
+
+[![CineVerse Hero Preview](assets/hero_banner.png)](http://13.203.136.117:3000)
 
 </div>
+
+---
+
+## 🌐 Live Production Deployment
+
+CineVerse is deployed and actively serving traffic from an **AWS EC2 (Mumbai - `ap-south-1`)** cloud instance:
+
+* 🚀 **Live Web Application**: **[http://13.203.136.117:3000](http://13.203.136.117:3000)**
+
+### Quick Endpoint Links
+
+| Component | Production URL | Description |
+| :--- | :--- | :--- |
+| 🎬 **Web App (Frontend)** | [http://13.203.136.117:3000](http://13.203.136.117:3000) | Full responsive React single-page application |
+| 🩺 **Backend Health Check** | [http://13.203.136.117:3000/api/health](http://13.203.136.117:3000/api/health) | Node.js REST API status & timestamp |
+| 🌟 **Featured Movies API** | [http://13.203.136.117:3000/api/movies/featured](http://13.203.136.117:3000/api/movies/featured) | Top-rated high-definition hero carousel data |
+| 🔥 **Trending Content API** | [http://13.203.136.117:3000/api/movies/trending](http://13.203.136.117:3000/api/movies/trending) | Real-time trending movie & series collection |
+| 🏷️ **Genres API** | [http://13.203.136.117:3000/api/movies/genres](http://13.203.136.117:3000/api/movies/genres) | 25 distinct indexed genre categories |
+| 🔍 **Search API** | [http://13.203.136.117:3000/api/movies/search?q=Inception](http://13.203.136.117:3000/api/movies/search?q=Inception) | Full-text query with streaming providers & trailers |
 
 ---
 
