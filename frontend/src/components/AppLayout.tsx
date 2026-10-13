@@ -37,8 +37,8 @@ export default function AppLayout({ children }: AppLayoutProps) {
     items.map((item) => {
       const Icon = item.icon;
       const isActive = (() => {
-        if (item.to === '/home') return location.pathname === '/home';
-        if (item.to === '/cinematch') return location.pathname === '/cinematch' || location.pathname === '/';
+        if (item.to === '/home') return location.pathname === '/home' || location.pathname === '/';
+        if (item.to === '/cinematch') return location.pathname === '/cinematch';
         const [itemPath, itemQuery] = item.to.split('?');
         if (itemQuery) {
           return location.pathname === itemPath && location.search.includes(itemQuery);

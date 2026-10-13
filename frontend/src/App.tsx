@@ -14,10 +14,10 @@ function App() {
         <AppLayout>
           <div className="flex-1 flex flex-col w-full min-w-0">
             <Routes>
-              {/* Default page when website link is clicked */}
-              <Route path="/" element={<Navigate to="/cinematch" replace />} />
-              <Route path="/cinematch" element={<CineMatchPage />} />
+              {/* Default page is Home */}
+              <Route path="/" element={<HomePage />} />
               <Route path="/home" element={<HomePage />} />
+              <Route path="/cinematch" element={<CineMatchPage />} />
               <Route path="/movie/:id" element={<MovieDetailPage />} />
               <Route path="/search" element={<SearchPage />} />
               <Route path="/watchlist" element={<WatchlistPage />} />

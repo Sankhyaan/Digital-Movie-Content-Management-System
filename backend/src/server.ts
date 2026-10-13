@@ -9,15 +9,16 @@ dotenv.config();  // ← Must be first, before any other imports that read env v
 
 import { createApp } from './app';
 import { SQLMovieRepository } from './repositories/SQLMovieRepository';
-import { testConnection } from './db/connection';
+import { testConnection, ensureDatabaseSchema } from './db/connection';
 
 // ── Configuration ────────────────────────────────────────────────────────────
 const PORT = process.env.PORT || 5000;
 
 // ── Boot sequence ─────────────────────────────────────────────────────────────
 async function bootstrap() {
-  // 1. Verify DB connection before starting the server
+  // 1. Verify DB connection and ensure required schema tables exist
   await testConnection();
+  await ensureDatabaseSchema();
 
   // 2. Wire up the real MySQL repository
   const repository = new SQLMovieRepository();

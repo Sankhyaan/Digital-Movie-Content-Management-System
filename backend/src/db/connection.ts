@@ -34,3 +34,33 @@ export async function testConnection(): Promise<void> {
     throw err;
   }
 }
+
+/**
+ * Automatically ensures necessary tables exist in the database upon startup.
+ * Prevents missing table crashes on fresh deployments.
+ */
+export async function ensureDatabaseSchema(): Promise<void> {
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS director (
+        director_id      INT          NOT NULL AUTO_INCREMENT PRIMARY KEY,
+        name             VARCHAR(255) NOT NULL,
+        profile_path     VARCHAR(255) DEFAULT NULL,
+        tmdb_director_id INT          DEFAULT NULL,
+        UNIQUE KEY uk_director_name (name)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+    `);
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS content_director (
+        content_id  INT NOT NULL,
+        director_id INT NOT NULL,
+        PRIMARY KEY (content_id, director_id),
+        KEY idx_content_director_director (director_id)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+    `);
+    console.log('✅ Database schema verified (director & content_director ready)');
+  } catch (err: any) {
+    console.warn('⚠️ Schema check note:', err?.message);
+  }
+}

@@ -239,31 +239,39 @@ async function hydrateContent(rows: ContentRow[]): Promise<Content[]> {
   };
 
   // Actors
-  const [actors] = await pool.query<ActorRow[]>(
-    `SELECT ca.content_id, ca.actor_id, a.name, a.profile_path, ca.role_name
-     FROM content_actor ca
-     JOIN actor a ON a.actor_id = ca.actor_id
-     WHERE ca.content_id IN (${ph})`,
-    ids,
-  );
-  for (const a of actors) {
-    let list = lookups.actors.get(a.content_id);
-    if (!list) { list = []; lookups.actors.set(a.content_id, list); }
-    list.push(a);
+  try {
+    const [actors] = await pool.query<ActorRow[]>(
+      `SELECT ca.content_id, ca.actor_id, a.name, a.profile_path, ca.role_name
+       FROM content_actor ca
+       JOIN actor a ON a.actor_id = ca.actor_id
+       WHERE ca.content_id IN (${ph})`,
+      ids,
+    );
+    for (const a of actors) {
+      let list = lookups.actors.get(a.content_id);
+      if (!list) { list = []; lookups.actors.set(a.content_id, list); }
+      list.push(a);
+    }
+  } catch (err: any) {
+    console.warn('[SQLMovieRepository] Could not fetch actors:', err?.message);
   }
 
   // Directors
-  const [directors] = await pool.query<DirectorRow[]>(
-    `SELECT cd.content_id, cd.director_id, d.name, d.profile_path
-     FROM content_director cd
-     JOIN director d ON d.director_id = cd.director_id
-     WHERE cd.content_id IN (${ph})`,
-    ids,
-  );
-  for (const d of directors) {
-    let list = lookups.directors.get(d.content_id);
-    if (!list) { list = []; lookups.directors.set(d.content_id, list); }
-    list.push(d);
+  try {
+    const [directors] = await pool.query<DirectorRow[]>(
+      `SELECT cd.content_id, cd.director_id, d.name, d.profile_path
+       FROM content_director cd
+       JOIN director d ON d.director_id = cd.director_id
+       WHERE cd.content_id IN (${ph})`,
+      ids,
+    );
+    for (const d of directors) {
+      let list = lookups.directors.get(d.content_id);
+      if (!list) { list = []; lookups.directors.set(d.content_id, list); }
+      list.push(d);
+    }
+  } catch (err: any) {
+    console.warn('[SQLMovieRepository] Could not fetch directors:', err?.message);
   }
 
   // Genres

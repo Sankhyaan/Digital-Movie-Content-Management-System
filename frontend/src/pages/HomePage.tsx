@@ -69,62 +69,62 @@ export default function HomePage() {
     };
   }, [refreshFeatured]);
 
-  useEffect(() => {
-    let isMounted = true;
+  const loadData = useCallback(async () => {
+    try {
+      const [
+        featuredRes,
+        trendingRes,
+        allRes,
+        actionRes,
+        dramaRes,
+        scifiRes,
+        animRes,
+      ] = await Promise.allSettled([
+        fetchFeaturedMovies(true),
+        fetchTrendingMovies(),
+        fetchMovies({ limit: 48 }),
+        fetchMovies({ genre: 'Action', limit: 20 }),
+        fetchMovies({ genre: 'Drama', limit: 20 }),
+        fetchMovies({ genre: 'Sci-Fi & Fantasy', limit: 20 }),
+        fetchMovies({ genre: 'Animation', limit: 20 }),
+      ]);
 
-    async function loadData() {
-      try {
-        const [
-          featuredData,
-          trendingData,
-          allData,
-          actionData,
-          dramaData,
-          scifiData,
-          animData,
-        ] = await Promise.all([
-          fetchFeaturedMovies(true),
-          fetchTrendingMovies(),
-          fetchMovies({ limit: 48 }),
-          fetchMovies({ genre: 'Action', limit: 20 }),
-          fetchMovies({ genre: 'Drama', limit: 20 }),
-          fetchMovies({ genre: 'Sci-Fi & Fantasy', limit: 20 }),
-          fetchMovies({ genre: 'Animation', limit: 20 }),
-        ]);
+      const featuredData = featuredRes.status === 'fulfilled' ? featuredRes.value : [];
+      const trendingData = trendingRes.status === 'fulfilled' ? trendingRes.value : [];
+      const allData      = allRes.status === 'fulfilled' ? allRes.value : [];
+      const actionData   = actionRes.status === 'fulfilled' ? actionRes.value : [];
+      const dramaData    = dramaRes.status === 'fulfilled' ? dramaRes.value : [];
+      const scifiData    = scifiRes.status === 'fulfilled' ? scifiRes.value : [];
+      const animData     = animRes.status === 'fulfilled' ? animRes.value : [];
 
-        if (!isMounted) return;
+      setFeatured(featuredData);
+      setTrending(trendingData);
+      setAllMovies(allData);
+      setActionMovies(actionData);
+      setDramaMovies(dramaData);
+      setScifiMovies(scifiData);
+      setAnimMovies(animData);
 
-        setFeatured(featuredData);
-        setTrending(trendingData);
-        setAllMovies(allData);
-        setActionMovies(actionData);
-        setDramaMovies(dramaData);
-        setScifiMovies(scifiData);
-        setAnimMovies(animData);
-
-        const newBundle: HomeCache = {
-          trending: trendingData,
-          allMovies: allData,
-          actionMovies: actionData,
-          dramaMovies: dramaData,
-          scifiMovies: scifiData,
-          animMovies: animData,
-        };
-        homeMemoryCache = newBundle;
-        setCachedData('home_page_bundle', newBundle);
-      } catch (error) {
-        console.error('Failed to load home data:', error);
-      } finally {
-        if (isMounted) setLoading(false);
-      }
+      const newBundle: HomeCache = {
+        trending: trendingData,
+        allMovies: allData,
+        actionMovies: actionData,
+        dramaMovies: dramaData,
+        scifiMovies: scifiData,
+        animMovies: animData,
+      };
+      homeMemoryCache = newBundle;
+      setCachedData('home_page_bundle', newBundle);
+    } catch (error) {
+      console.error('Failed to load home data:', error);
+    } finally {
+      setLoading(false);
     }
-
-    loadData();
-
-    return () => {
-      isMounted = false;
-    };
   }, []);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
 
   const handleLoadMore = async () => {
     if (loadingMore || !hasMore) return;
@@ -157,6 +157,30 @@ export default function HomePage() {
             ))}
           </div>
         </div>
+      </div>
+    );
+  }
+
+  const hasAnyContent = featured.length > 0 || trending.length > 0 || allMovies.length > 0;
+
+  if (!hasAnyContent) {
+    return (
+      <div className="flex flex-col items-center justify-center py-28 px-4 text-center space-y-4" id="home-empty-state">
+        <div className="w-16 h-16 rounded-2xl bg-sky-500/10 border border-sky-500/20 flex items-center justify-center text-sky-400">
+          <IconFilm size={32} />
+        </div>
+        <h3 className="font-outfit font-bold text-xl text-white">
+          No Titles Available
+        </h3>
+        <p className="text-sm text-neutral-400 max-w-md">
+          Unable to load movies right now. Please check your connection or tap Retry to reload.
+        </p>
+        <button
+          onClick={() => { setLoading(true); loadData(); }}
+          className="btn-primary py-2.5 px-6 text-sm"
+        >
+          Retry
+        </button>
       </div>
     );
   }
