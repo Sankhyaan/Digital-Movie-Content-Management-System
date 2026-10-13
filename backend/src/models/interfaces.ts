@@ -28,6 +28,13 @@ export interface Actor {
   roleName:    string | null; // content_actor.role_name
 }
 
+/** A director that directed a piece of content. */
+export interface Director {
+  directorId:  number;        // director.director_id
+  name:        string;        // director.name
+  profilePath: string | null; // director.profile_path
+}
+
 /** A language linked to a content item. */
 export interface ContentLanguage {
   languageId:   number;  // language.language_id
@@ -85,6 +92,7 @@ export interface Content {
   // Related data
   genres:    string[];          // from genre via content_genre
   actors:    Actor[];           // from actor via content_actor
+  directors: Director[];        // from director via content_director
   languages: ContentLanguage[]; // from language via content_language
   platforms: Platform[];        // from ott_platform via content_platform
 }
@@ -103,3 +111,49 @@ export interface ContentFilters {
 // Aliases so controller/service files compile without modification
 export type Movie        = Content;
 export type MovieFilters = ContentFilters;
+
+// =============================================================================
+// MOVIE DNA / RECOMMENDATION DATA LAYER INTERFACES (DERIVED FEATURE LAYER)
+// =============================================================================
+
+export interface SeriesMetadata {
+  total_seasons:                  number | null;
+  has_episode_metadata:           boolean;
+  total_episodes:                 number;
+  seasons_with_episodes:          number;
+  known_episode_duration_count:   number;
+  missing_episode_duration_count: number;
+  avg_episode_duration:           number | null; // in minutes
+  median_episode_duration:        number | null; // in minutes
+  total_known_runtime:            number | null; // in minutes
+}
+
+export interface QualityFlags {
+  has_description:      boolean;
+  has_genres:           boolean;
+  has_languages:        boolean;
+  has_platforms:        boolean;
+  has_actors:           boolean;
+  has_directors:        boolean;
+  has_runtime:          boolean;
+  has_rating:           boolean;
+  is_unreleased:        boolean;
+  has_episode_metadata: boolean;
+}
+
+export interface MovieDNA {
+  content_id:      number;
+  title:           string;
+  type:            'Movie' | 'Series';
+  description:     string | null;
+  release_year:    number | null;
+  rating:          number | null;
+  runtime:         number | null; // in minutes, null for Series
+  genres:          string[];
+  languages:       string[];
+  platforms:       string[];
+  actors:          string[];
+  directors:       string[];
+  series_metadata: SeriesMetadata | null; // null for Movie
+  quality_flags:   QualityFlags;
+}

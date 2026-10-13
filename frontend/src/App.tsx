@@ -1,7 +1,6 @@
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { WatchlistProvider } from './context/WatchlistContext';
-import Navbar from './components/Navbar';
-import Footer from './components/Footer';
+import AppLayout from './components/AppLayout';
 import HomePage from './pages/HomePage';
 import MovieDetailPage from './pages/MovieDetailPage';
 import SearchPage from './pages/SearchPage';
@@ -12,19 +11,19 @@ function App() {
   return (
     <WatchlistProvider>
       <Router>
-        <div className="flex flex-col min-h-screen">
-          <Navbar />
-          <main className="flex-1">
+        <AppLayout>
+          <div className="flex-1 flex flex-col w-full min-w-0">
             <Routes>
-              <Route path="/" element={<HomePage />} />
+              {/* Default page when website link is clicked */}
+              <Route path="/" element={<Navigate to="/cinematch" replace />} />
+              <Route path="/cinematch" element={<CineMatchPage />} />
+              <Route path="/home" element={<HomePage />} />
               <Route path="/movie/:id" element={<MovieDetailPage />} />
               <Route path="/search" element={<SearchPage />} />
               <Route path="/watchlist" element={<WatchlistPage />} />
-              <Route path="/cinematch" element={<CineMatchPage />} />
             </Routes>
-          </main>
-          <Footer />
-        </div>
+          </div>
+        </AppLayout>
       </Router>
     </WatchlistProvider>
   );

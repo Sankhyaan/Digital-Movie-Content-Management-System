@@ -16,6 +16,10 @@ export class MovieService {
     return this.repository.getAll(filters);
   }
 
+  async getCount(filters?: ContentFilters): Promise<number> {
+    return this.repository.count(filters);
+  }
+
   async getMovieById(id: string): Promise<Content | null> {
     return this.repository.getById(id);
   }

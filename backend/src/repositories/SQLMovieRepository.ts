@@ -24,8 +24,9 @@ import { RowDataPacket } from 'mysql2/promise';
 import { pool }          from '../db/connection';
 import {
   Content, ContentFilters,
-  Actor, ContentLanguage, Platform, Season, Episode,
+  Actor, Director, ContentLanguage, Platform, Season, Episode,
 } from '../models/interfaces';
+import { resolveDirector, resolveActor } from '../services/customPromptParser';
 
 /** Quick YouTube trailer resolver for contents without trailer_key */
 function resolveYouTubeTrailer(title: string, year?: number | null): Promise<string | null> {
@@ -79,6 +80,13 @@ interface ActorRow extends RowDataPacket {
   role_name:    string | null;
 }
 
+interface DirectorRow extends RowDataPacket {
+  content_id:   number;
+  director_id:  number;
+  name:         string;
+  profile_path: string | null;
+}
+
 interface GenreRow extends RowDataPacket {
   content_id: number;
   genre_name: string;
@@ -118,6 +126,7 @@ interface EpisodeRow extends RowDataPacket {
 
 interface ContentLookups {
   actors:    Map<number, ActorRow[]>;
+  directors: Map<number, DirectorRow[]>;
   genres:    Map<number, GenreRow[]>;
   languages: Map<number, LangRow[]>;
   platforms: Map<number, PlatformRow[]>;
@@ -128,6 +137,7 @@ interface ContentLookups {
 function buildContent(row: ContentRow, lookups: ContentLookups): Content {
   const id = row.content_id;
   const myActors    = lookups.actors.get(id)    || [];
+  const myDirectors = lookups.directors.get(id) || [];
   const myGenres    = lookups.genres.get(id)    || [];
   const myLanguages = lookups.languages.get(id) || [];
   const myPlatforms = lookups.platforms.get(id) || [];
@@ -164,6 +174,11 @@ function buildContent(row: ContentRow, lookups: ContentLookups): Content {
       name:        a.name,
       profilePath: a.profile_path ?? null,
       roleName:    a.role_name,
+    })),
+    directors:    myDirectors.map((d): Director => ({
+      directorId:  d.director_id,
+      name:        d.name,
+      profilePath: d.profile_path ?? null,
     })),
     // Deduplicate languages
     languages: (() => {
@@ -215,6 +230,7 @@ async function hydrateContent(rows: ContentRow[]): Promise<Content[]> {
 
   const lookups: ContentLookups = {
     actors:    new Map(),
+    directors: new Map(),
     genres:    new Map(),
     languages: new Map(),
     platforms: new Map(),
@@ -234,6 +250,20 @@ async function hydrateContent(rows: ContentRow[]): Promise<Content[]> {
     let list = lookups.actors.get(a.content_id);
     if (!list) { list = []; lookups.actors.set(a.content_id, list); }
     list.push(a);
+  }
+
+  // Directors
+  const [directors] = await pool.query<DirectorRow[]>(
+    `SELECT cd.content_id, cd.director_id, d.name, d.profile_path
+     FROM content_director cd
+     JOIN director d ON d.director_id = cd.director_id
+     WHERE cd.content_id IN (${ph})`,
+    ids,
+  );
+  for (const d of directors) {
+    let list = lookups.directors.get(d.content_id);
+    if (!list) { list = []; lookups.directors.set(d.content_id, list); }
+    list.push(d);
   }
 
   // Genres
@@ -367,27 +397,67 @@ export class SQLMovieRepository {
 
     if (filters?.type)   { conditions.push('c.type = ?');          params.push(filters.type); }
     if (filters?.year)   { conditions.push('c.release_year = ?');  params.push(filters.year); }
-    if (filters?.search) { conditions.push('c.title LIKE ?');      params.push(`%${filters.search}%`); }
+    if (filters?.search) {
+      conditions.push('c.title LIKE ?');
+      params.push(`%${filters.search}%`);
+    }
 
     if (conditions.length > 0) {
       sql += ' WHERE ' + conditions.join(' AND ');
     }
     sql += ' GROUP BY c.content_id ORDER BY c.release_year DESC';
 
-    if (filters?.limit) {
-      const limitNum = Math.max(1, parseInt(String(filters.limit), 10));
-      sql += ' LIMIT ?';
-      params.push(limitNum);
+    const limitNum = filters?.limit ? Math.max(1, parseInt(String(filters.limit), 10)) : 60;
+    sql += ' LIMIT ?';
+    params.push(limitNum);
 
-      if (filters?.offset) {
-        const offsetNum = Math.max(0, parseInt(String(filters.offset), 10));
-        sql += ' OFFSET ?';
-        params.push(offsetNum);
-      }
+    if (filters?.offset) {
+      const offsetNum = Math.max(0, parseInt(String(filters.offset), 10));
+      sql += ' OFFSET ?';
+      params.push(offsetNum);
     }
 
     const [rows] = await pool.query<ContentRow[]>(sql, params);
     return hydrateContent(rows);
+  }
+
+  /** Fast count of total matching content items */
+  async count(filters?: ContentFilters): Promise<number> {
+    let sql = 'SELECT COUNT(DISTINCT c.content_id) as total FROM content c';
+    const params: (string | number)[] = [];
+    const conditions: string[] = [];
+
+    if (filters?.genre) {
+      sql += `
+        JOIN content_genre cg_f ON cg_f.content_id = c.content_id
+        JOIN genre          g_f ON g_f.genre_id     = cg_f.genre_id
+      `;
+      conditions.push('g_f.genre_name = ?');
+      params.push(filters.genre);
+    }
+
+    if (filters?.language) {
+      sql += `
+        JOIN content_language cl_f ON cl_f.content_id  = c.content_id
+        JOIN language          l_f ON l_f.language_id  = cl_f.language_id
+      `;
+      conditions.push('l_f.language_name = ?');
+      params.push(filters.language);
+    }
+
+    if (filters?.type)   { conditions.push('c.type = ?');          params.push(filters.type); }
+    if (filters?.year)   { conditions.push('c.release_year = ?');  params.push(filters.year); }
+    if (filters?.search) {
+      conditions.push('c.title LIKE ?');
+      params.push(`%${filters.search}%`);
+    }
+
+    if (conditions.length > 0) {
+      sql += ' WHERE ' + conditions.join(' AND ');
+    }
+
+    const [rows] = await pool.query<RowDataPacket[]>(sql, params);
+    return Number(rows[0]?.total ?? 0);
   }
 
   /** Single content item by content_id */
@@ -412,10 +482,17 @@ export class SQLMovieRepository {
     return item;
   }
 
-  /** Featured — top rated (rating >= 8.0), up to 10 items with backdrops for hero display */
+  /** Featured — random 10 high-rated titles with backdrops & descriptions for the hero carousel */
   async getFeatured(): Promise<Content[]> {
     const [rows] = await pool.query<ContentRow[]>(
-      `${BASE_SELECT} WHERE c.rating >= 8.0 AND c.rating <= 10.0 ORDER BY (c.backdrop_path IS NOT NULL) DESC, c.rating DESC LIMIT 10`,
+      `${BASE_SELECT}
+       WHERE c.backdrop_path IS NOT NULL
+         AND TRIM(c.backdrop_path) != ''
+         AND c.description IS NOT NULL
+         AND TRIM(c.description) != ''
+         AND c.rating >= 6.5
+       ORDER BY RAND()
+       LIMIT 10`,
     );
     return hydrateContent(rows);
   }
@@ -441,12 +518,32 @@ export class SQLMovieRepository {
     return rows.map(r => r.genre_name as string);
   }
 
-  /** Search by title */
+  /** Search strictly by content title */
   async search(query: string): Promise<Content[]> {
-    const [rows] = await pool.query<ContentRow[]>(
-      `${BASE_SELECT} WHERE c.title LIKE ? ORDER BY c.rating DESC`,
-      [`%${query}%`],
-    );
+    const trimmed = query.trim();
+    if (!trimmed) return [];
+
+    const likeTerm = `%${trimmed}%`;
+
+    const sql = `
+      ${BASE_SELECT}
+      WHERE c.title LIKE ?
+      ORDER BY
+        CASE
+          WHEN LOWER(c.title) = LOWER(?) THEN 1
+          WHEN LOWER(c.title) LIKE CONCAT(LOWER(?), '%') THEN 2
+          ELSE 3
+        END ASC,
+        c.rating DESC
+      LIMIT 60
+    `;
+
+    const [rows] = await pool.query<ContentRow[]>(sql, [
+      likeTerm,
+      trimmed,
+      trimmed,
+    ]);
+
     return hydrateContent(rows);
   }
 

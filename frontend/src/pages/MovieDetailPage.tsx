@@ -1,11 +1,24 @@
-import { useState, useEffect } from 'react';
-import { useParams, Link } from 'react-router-dom';
-import { fetchMovieById, posterUrl, backdropUrl, actorProfileUrl, getCachedData } from '../api/movieApi';
+import React, { useState, useEffect } from 'react';
+import { useParams, Link, useNavigate } from 'react-router-dom';
+import {
+  fetchMovieById,
+  posterUrl,
+  backdropUrl,
+  actorProfileUrl,
+  getCachedData,
+} from '../api/movieApi';
 import type { MovieDetail } from '../api/movieApi';
 import { useWatchlist } from '../context/WatchlistContext';
-import React from 'react';
+import {
+  IconPlay,
+  IconStar,
+  IconClose,
+  IconFilm,
+  IconUser,
+  IconCheck,
+  IconChevronLeft,
+} from '../components/Icons';
 
-// ── Language code → full name map ─────────────────────────────────────────────
 const LANG_MAP: Record<string, string> = {
   en: 'English',   hi: 'Hindi',     ru: 'Russian',   fr: 'French',
   de: 'German',    es: 'Spanish',   it: 'Italian',   ja: 'Japanese',
@@ -15,116 +28,33 @@ const LANG_MAP: Record<string, string> = {
   th: 'Thai',      vi: 'Vietnamese',id: 'Indonesian',ms: 'Malay',
   fa: 'Persian',   he: 'Hebrew',    uk: 'Ukrainian', ro: 'Romanian',
   hu: 'Hungarian', bn: 'Bengali',   ta: 'Tamil',     te: 'Telugu',
-  ml: 'Malayalam', pa: 'Punjabi',   ur: 'Urdu',      sw: 'Swahili',
-  el: 'Greek',     bg: 'Bulgarian', hr: 'Croatian',  sk: 'Slovak',
-  ca: 'Catalan',   sr: 'Serbian',   lt: 'Lithuanian',lv: 'Latvian',
-  et: 'Estonian',  sl: 'Slovenian', tl: 'Filipino',  cn: 'Cantonese',
 };
 
-/** Convert a language code (e.g. "ru") or raw name to a full display name. */
 const langName = (raw = ''): string => {
   if (!raw) return raw;
   const lower = raw.trim().toLowerCase();
-  // If it's a short ISO code in our map, return full name
   if (LANG_MAP[lower]) return LANG_MAP[lower];
-  // If it looks like a short code (≤3 chars) not in map, return uppercased
   if (lower.length <= 3) return raw.toUpperCase();
-  // Otherwise it's already a full name (e.g. stored as "English")
   return raw.charAt(0).toUpperCase() + raw.slice(1);
 };
 
-// ── Platform branding helper ──────────────────────────────────────────────────
-const getPlatformMeta = (name = '') => {
-  const n = name.toLowerCase();
-  if (n.includes('netflix'))  return { bg: 'rgba(229, 9, 20, 0.12)', border: 'rgba(229, 9, 20, 0.35)', icon: '🔴', accent: '#ff4d4d', brand: 'Netflix' };
-  if (n.includes('prime') || n.includes('amazon')) return { bg: 'rgba(0, 168, 225, 0.12)', border: 'rgba(0, 168, 225, 0.35)', icon: '🔵', accent: '#00a8e1', brand: 'Prime Video' };
-  if (n.includes('apple'))    return { bg: 'rgba(255, 255, 255, 0.10)', border: 'rgba(255, 255, 255, 0.25)', icon: '🍎', accent: '#f5f5f7', brand: 'Apple TV+' };
-  if (n.includes('hotstar') || n.includes('jiohotstar')) return { bg: 'rgba(17, 60, 207, 0.15)', border: 'rgba(17, 60, 207, 0.40)', icon: '🌟', accent: '#4a90e2', brand: 'Disney+ Hotstar' };
-  if (n.includes('disney'))   return { bg: 'rgba(17, 60, 207, 0.15)', border: 'rgba(17, 60, 207, 0.40)', icon: '🌟', accent: '#4a90e2', brand: 'Disney+' };
-  if (n.includes('hbo') || n.includes('max')) return { bg: 'rgba(153, 51, 204, 0.15)', border: 'rgba(153, 51, 204, 0.40)', icon: '🟣', accent: '#b968f0', brand: 'Max' };
-  if (n.includes('paramount')) return { bg: 'rgba(0, 100, 210, 0.14)', border: 'rgba(0, 100, 210, 0.35)', icon: '⭐', accent: '#0064d2', brand: 'Paramount+' };
-  if (n.includes('crunchyroll')) return { bg: 'rgba(255, 106, 0, 0.14)', border: 'rgba(255, 106, 0, 0.35)', icon: '🟠', accent: '#ff6a00', brand: 'Crunchyroll' };
-  if (n.includes('sony') || n.includes('sonyliv')) return { bg: 'rgba(255, 120, 0, 0.14)', border: 'rgba(255, 120, 0, 0.35)', icon: '📺', accent: '#ff7800', brand: 'Sony LIV' };
-  if (n.includes('zee') || n.includes('zee5')) return { bg: 'rgba(140, 29, 219, 0.14)', border: 'rgba(140, 29, 219, 0.35)', icon: '📺', accent: '#b24bf3', brand: 'Zee5' };
-  if (n.includes('google')) return { bg: 'rgba(66, 133, 244, 0.14)', border: 'rgba(66, 133, 244, 0.35)', icon: '▶️', accent: '#4285f4', brand: 'Google Play Movies' };
-  if (n.includes('youtube')) return { bg: 'rgba(255, 0, 0, 0.14)', border: 'rgba(255, 0, 0, 0.35)', icon: '▶️', accent: '#ff3333', brand: 'YouTube' };
-  return { bg: 'rgba(16, 185, 129, 0.10)', border: 'rgba(16, 185, 129, 0.25)', icon: '📺', accent: 'var(--accent-bright)', brand: name };
-};
-
-// ── Direct Streaming Service Content Redirect URL ─────────────────────────────
-const getDirectPlatformUrl = (platformName = '', title = '') => {
-  const n = platformName.toLowerCase();
-  const q = encodeURIComponent(title);
-  if (n.includes('netflix'))  return `https://www.netflix.com/search?q=${q}`;
-  if (n.includes('prime') || n.includes('amazon')) return `https://www.primevideo.com/search/ref=atv_nb_sr?phrase=${q}`;
-  if (n.includes('apple'))    return `https://tv.apple.com/search?term=${q}`;
-  if (n.includes('hotstar') || n.includes('jiohotstar')) return `https://www.hotstar.com/in/explore?search_query=${q}`;
-  if (n.includes('disney'))   return `https://www.disneyplus.com/search?q=${q}`;
-  if (n.includes('hbo') || n.includes('max')) return `https://play.max.com/search?q=${q}`;
-  if (n.includes('paramount')) return `https://www.paramountplus.com/search/?query=${q}`;
-  if (n.includes('peacock'))  return `https://www.peacocktv.com/search?q=${q}`;
-  if (n.includes('crunchyroll')) return `https://www.crunchyroll.com/search?q=${q}`;
-  if (n.includes('sony') || n.includes('sonyliv')) return `https://www.sonyliv.com/search/${q}`;
-  if (n.includes('zee') || n.includes('zee5')) return `https://www.zee5.com/search?q=${q}`;
-  if (n.includes('google'))   return `https://play.google.com/store/search?q=${q}&c=movies`;
-  if (n.includes('youtube'))  return `https://www.youtube.com/results?search_query=${encodeURIComponent(title + ' movie')}`;
-  return `https://www.justwatch.com/search?q=${q}`;
-};
-
-// ── tiny helpers ──────────────────────────────────────────────────────────────
-
-interface InfoTileProps {
-  label: string;
-  value?: string | number | null;
-}
-
-function InfoTile({ label, value }: InfoTileProps) {
-  return (
-    <div style={{
-      background: 'rgba(13,20,13,0.70)',
-      border: '1px solid rgba(16,185,129,0.10)',
-      borderRadius: '10px',
-      padding: '18px 20px',
-      transition: 'border-color 0.2s',
-    }}
-      onMouseEnter={(e) => (e.currentTarget.style.borderColor = 'rgba(16,185,129,0.28)')}
-      onMouseLeave={(e) => (e.currentTarget.style.borderColor = 'rgba(16,185,129,0.10)')}
-    >
-      <p style={{ fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--text-muted)', marginBottom: '8px', fontWeight: 600 }}>
-        {label}
-      </p>
-      <p style={{ fontSize: '0.92rem', fontWeight: 600, color: 'var(--text-primary)', lineHeight: 1.4 }}>
-        {value ?? '—'}
-      </p>
-    </div>
-  );
-}
-
-interface SectionLabelProps {
-  children: React.ReactNode;
-}
-
-function SectionLabel({ children }: SectionLabelProps) {
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '20px' }}>
-      <div style={{ width: '3px', height: '22px', borderRadius: '2px', background: 'var(--gradient-accent)', flexShrink: 0 }} />
-      <h3 style={{ fontFamily: "'Outfit', sans-serif", fontSize: '1rem', fontWeight: 700, color: 'var(--text-accent)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-        {children}
-      </h3>
-    </div>
-  );
-}
-
-// ── Main component ─────────────────────────────────────────────────────────────
-
 export default function MovieDetailPage() {
+  const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
   const initialMovie = id ? getCachedData<MovieDetail>('movie_detail_' + id) : null;
-  const [movie, setMovie]       = useState<MovieDetail | null>(initialMovie);
-  const [loading, setLoading]   = useState(!initialMovie);
-  const [activeTab, setActive]  = useState('overview');
+  const [movie, setMovie] = useState<MovieDetail | null>(initialMovie);
+  const [loading, setLoading] = useState(!initialMovie);
+  const [activeTab, setActive] = useState<'overview' | 'cast' | 'episodes'>('overview');
   const [showTrailer, setShowTrailer] = useState(false);
   const { isInWatchlist, addToWatchlist, removeFromWatchlist } = useWatchlist();
+
+  const handleBack = () => {
+    if (window.history.length > 1) {
+      navigate(-1);
+    } else {
+      navigate('/');
+    }
+  };
 
   useEffect(() => {
     let isMounted = true;
@@ -150,67 +80,99 @@ export default function MovieDetailPage() {
       }
     }
     load();
-    window.scrollTo(0, 0);
 
     return () => {
       isMounted = false;
     };
   }, [id]);
 
-  // Escape key closes trailer modal
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') setShowTrailer(false);
     };
     if (showTrailer) {
       window.addEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = 'hidden';
     }
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = '';
+    };
   }, [showTrailer]);
 
-  // ── Loading state ────────────────────────────────────────────────────────
   if (loading) {
     return (
-      <div style={{ maxWidth: 'var(--container-max)', margin: '0 auto', padding: 'calc(var(--navbar-height) + 32px) 36px 64px' }}>
-        <div className="skeleton" style={{ width: '100%', height: '400px', borderRadius: '18px', marginBottom: '40px' }} />
-        <div style={{ display: 'flex', gap: '36px' }}>
-          <div className="skeleton" style={{ width: '240px', flexShrink: 0, aspectRatio: '2/3', borderRadius: '12px' }} />
-          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            <div className="skeleton" style={{ width: '65%', height: '42px', borderRadius: '8px' }} />
-            <div className="skeleton" style={{ width: '45%', height: '24px', borderRadius: '8px' }} />
-            <div className="skeleton" style={{ width: '100%', height: '120px', borderRadius: '8px' }} />
-          </div>
+      <div
+        style={{
+          height: '100%',
+          flex: 1,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          background: '#06080e',
+        }}
+      >
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-10 h-10 border-3 border-sky-500/20 border-t-sky-400 rounded-full animate-spin" />
+          <p className="text-xs text-neutral-400 font-medium">Loading content...</p>
         </div>
       </div>
     );
   }
 
-  // ── Not found ────────────────────────────────────────────────────────────
   if (!movie) {
     return (
-      <div style={{ minHeight: '60vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '16px' }}>
-        <span style={{ fontSize: '3rem' }}>🎬</span>
-        <h2 style={{ fontFamily: "'Outfit', sans-serif", fontSize: '1.6rem' }}>Content Not Found</h2>
-        <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>The title you're looking for doesn't exist.</p>
-        <Link to="/" className="btn-primary" style={{ marginTop: '8px' }}>← Back to Home</Link>
+      <div
+        style={{
+          height: '100%',
+          flex: 1,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          textAlign: 'center',
+          padding: '24px',
+          gap: '14px',
+          background: '#06080e',
+        }}
+      >
+        <div className="w-16 h-16 rounded-2xl bg-sky-500/10 border border-sky-500/20 flex items-center justify-center text-sky-400">
+          <IconFilm size={30} />
+        </div>
+        <h2 className="font-outfit font-bold text-xl text-white">Title Not Found</h2>
+        <Link
+          to="/home"
+          style={{
+            padding: '10px 24px',
+            borderRadius: '12px',
+            background: 'linear-gradient(135deg, #0ea5e9, #2563eb)',
+            color: '#fff',
+            fontWeight: 700,
+            fontSize: '0.84rem',
+            textDecoration: 'none',
+          }}
+        >
+          Back to Home
+        </Link>
       </div>
     );
   }
 
-  // ── Derived values ───────────────────────────────────────────────────────
   const inWatchlist = isInWatchlist(movie.contentId);
-  const poster      = posterUrl(movie.posterPath, movie.title);
-  const backdrop    = backdropUrl(movie.backdropPath) || backdropUrl(movie.posterPath) || poster;
-  const rating      = movie.rating != null ? Number(movie.rating) : null;
-  const year        = movie.releaseYear ?? '—';
-  const duration    = movie.type === 'Movie' && movie.duration ? `${movie.duration} min` : null;
-  const seasons     = movie.type === 'Series' && movie.totalSeasons ? `${movie.totalSeasons} Season${movie.totalSeasons > 1 ? 's' : ''}` : null;
+  const poster = posterUrl(movie.posterPath, movie.title);
+  const backdrop = backdropUrl(movie.backdropPath) || backdropUrl(movie.posterPath) || poster;
+  const rating = movie.rating != null ? Number(movie.rating).toFixed(1) : '—';
+  const year = movie.releaseYear ?? '—';
+  const duration = movie.type === 'Movie' && movie.duration ? `${movie.duration} min` : null;
+  const seasons =
+    movie.type === 'Series' && movie.totalSeasons
+      ? `${movie.totalSeasons} Season${movie.totalSeasons > 1 ? 's' : ''}`
+      : null;
 
-  // Deduplicate and normalize languages
   const uniqueLanguages = (() => {
     const seen = new Set<string>();
     const list: NonNullable<typeof movie.languages> = [];
-    for (const l of (movie.languages ?? [])) {
+    for (const l of movie.languages ?? []) {
       const clean = langName(l.languageName);
       const key = `${clean.toLowerCase()}_${l.type}`;
       if (!seen.has(key)) {
@@ -221,736 +183,665 @@ export default function MovieDetailPage() {
     return list;
   })();
 
-  // Strictly filter to verified global streaming platforms only (reject Hulu & unverified channels)
-  const uniquePlatforms = (() => {
-    const isVerifiedPlatform = (raw = '') => {
-      const n = raw.trim().toLowerCase();
-      if (n.includes('hulu')) return false; // Hulu causes geoblock redirects outside US
-      return (
-        n.includes('netflix') ||
-        n.includes('prime') ||
-        n.includes('amazon') ||
-        n.includes('apple') ||
-        n.includes('hotstar') ||
-        n.includes('jiohotstar') ||
-        n.includes('disney') ||
-        n.includes('max') ||
-        n.includes('paramount') ||
-        n.includes('sony') ||
-        n.includes('zee') ||
-        n.includes('crunchyroll') ||
-        n.includes('google play') ||
-        n.includes('youtube')
-      );
-    };
+  const origLangRaw =
+    uniqueLanguages.find((l) => l.type === 'Original')?.languageName ??
+    uniqueLanguages[0]?.languageName ??
+    null;
+  const origLang = origLangRaw ? langName(origLangRaw) : '—';
+  const description = movie.description || 'No description available for this title.';
 
-    const seen = new Set<string>();
-    const list: NonNullable<typeof movie.platforms> = [];
-    for (const p of (movie.platforms ?? [])) {
-      const clean = p.name.trim();
-      if (!isVerifiedPlatform(clean)) continue;
-      const key = clean.toLowerCase();
-      if (!seen.has(key)) {
-        seen.add(key);
-        list.push({ ...p, name: clean });
-      }
-    }
-    return list;
-  })();
-
-  const origLangRaw = uniqueLanguages.find(l => l.type === 'Original')?.languageName ?? uniqueLanguages[0]?.languageName ?? null;
-  const origLang    = origLangRaw ? langName(origLangRaw) : null;
-  const description = movie.description ?? null;
-
-  const tabs = [
-    { id: 'overview',  label: 'Overview' },
-    { id: 'cast',      label: 'Cast' },
-    { id: 'platforms', label: 'Platforms' },
-    ...(movie.type === 'Series' ? [{ id: 'episodes', label: 'Episodes' }] : []),
+  const tabs: { id: 'overview' | 'cast' | 'episodes'; label: string }[] = [
+    { id: 'overview', label: 'Overview' },
+    { id: 'cast', label: 'Cast' },
+    ...(movie.type === 'Series' ? [{ id: 'episodes' as const, label: 'Episodes' }] : []),
   ];
 
   return (
-    <div id="movie-detail-page">
+    <>
+      {/* ── Fixed Page Container (No Outer Scroll Down) ────────────────── */}
+      <div
+        id="movie-detail-page"
+        style={{
+          height: '100%',
+          flex: 1,
+          overflow: 'hidden',
+          position: 'relative',
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'center',
+          background: '#06080e',
+        }}
+      >
+        {/* Full-bleed Content Image as Background */}
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            backgroundImage: `url(${backdrop})`,
+            backgroundSize: 'cover',
+            backgroundPosition: 'center',
+            filter: 'brightness(0.42)',
+            transform: 'scale(1.02)',
+          }}
+        />
 
-      {/* ── Backdrop hero ───────────────────────────────────────────────── */}
-      <div style={{ position: 'relative', width: '100%', height: '480px', overflow: 'hidden' }}>
-        <div style={{
-          position: 'absolute', inset: 0,
-          backgroundImage: `url(${backdrop})`,
-          backgroundSize: 'cover',
-          backgroundPosition: 'center 20%',
-          filter: 'brightness(0.22) blur(5px)',
-          transform: 'scale(1.06)',
-        }} />
-        {/* bottom fade to page bg */}
-        <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, var(--bg-primary) 0%, rgba(6,6,9,0.0) 55%)' }} />
-        {/* left fade */}
-        <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to right, rgba(6,6,9,0.95) 0%, transparent 65%)' }} />
-        {/* green glow vignette */}
-        <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(ellipse at 25% 60%, rgba(16,185,129,0.06) 0%, transparent 55%)' }} />
-      </div>
+        {/* Ambient Dark Gradient Overlays for High Legibility */}
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            background:
+              'linear-gradient(to right, rgba(6, 8, 14, 0.96) 0%, rgba(6, 8, 14, 0.88) 36%, rgba(6, 8, 14, 0.65) 70%, rgba(6, 8, 14, 0.45) 100%)',
+          }}
+        />
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            background:
+              'linear-gradient(to top, rgba(6, 8, 14, 0.95) 0%, rgba(6, 8, 14, 0.25) 50%, rgba(6, 8, 14, 0.75) 100%)',
+          }}
+        />
 
-      {/* ── Content panel (pulled up over backdrop) ──────────────────────── */}
-      <div style={{
-        position: 'relative',
-        maxWidth: 'var(--container-max)',
-        margin: '-340px auto 0',
-        padding: '0 36px 80px',
-        zIndex: 10,
-      }}>
-        <div style={{ display: 'flex', gap: '44px', flexWrap: 'wrap', alignItems: 'flex-start' }}>
+        {/* ── Floating Back Navigation Button ────────────────────────────── */}
+        <div
+          style={{
+            position: 'absolute',
+            top: '24px',
+            left: 'clamp(28px, 4vw, 56px)',
+            zIndex: 40,
+          }}
+        >
+          <button
+            type="button"
+            onClick={handleBack}
+            id="movie-detail-back-btn"
+            className="group flex items-center gap-2 rounded-xl text-neutral-300 hover:text-white transition-all cursor-pointer select-none"
+            style={{
+              background: 'rgba(11, 16, 28, 0.82)',
+              backdropFilter: 'blur(16px)',
+              WebkitBackdropFilter: 'blur(16px)',
+              border: '1px solid rgba(255, 255, 255, 0.14)',
+              padding: '9px 18px 9px 13px',
+              boxShadow: '0 4px 22px rgba(0, 0, 0, 0.55)',
+            }}
+            title="Go back"
+            aria-label="Go back"
+          >
+            <IconChevronLeft size={18} className="group-hover:-translate-x-1 transition-transform text-sky-400" />
+            <span className="font-outfit font-semibold text-xs tracking-wide">Back</span>
+          </button>
+        </div>
 
-          {/* ── Left: Poster + Watchlist ───────────────────────────────── */}
-          <div style={{ flexShrink: 0, width: '245px' }}>
-            {/* Poster */}
-            <div style={{
-              borderRadius: '14px',
-              overflow: 'hidden',
-              aspectRatio: '2/3',
-              boxShadow: '0 20px 60px rgba(0,0,0,0.75), 0 0 0 1px rgba(16,185,129,0.14)',
-            }}>
+        {/* ── Main Content Grid (Poster to Left + Content to Right) ───────── */}
+        <div
+          style={{
+            position: 'relative',
+            zIndex: 10,
+            width: '100%',
+            maxWidth: '1440px',
+            margin: '0 auto',
+            paddingLeft: 'clamp(28px, 4vw, 56px)',
+            paddingRight: 'clamp(28px, 4vw, 56px)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 'clamp(32px, 4vw, 54px)',
+          }}
+        >
+          {/* ── Left Column: Main Poster + Action Buttons ─────────────────── */}
+          <div
+            style={{
+              width: '260px',
+              flexShrink: 0,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '12px',
+            }}
+          >
+            {/* Poster Card */}
+            <div
+              style={{
+                width: '260px',
+                height: '380px',
+                borderRadius: '20px',
+                overflow: 'hidden',
+                background: '#090d16',
+                border: '1px solid rgba(255, 255, 255, 0.12)',
+                boxShadow: '0 24px 50px rgba(0, 0, 0, 0.75)',
+              }}
+            >
               <img
                 src={poster}
                 alt={movie.title}
-                style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
-                onError={(e) => { (e.target as HTMLImageElement).src = `https://placehold.co/300x450/060609/10b981?text=${encodeURIComponent(movie.title)}`; }}
+                style={{
+                  width: '100%',
+                  height: '100%',
+                  objectFit: 'cover',
+                  display: 'block',
+                }}
+                onError={(e) => {
+                  (e.target as HTMLImageElement).src = `https://placehold.co/300x450/06080e/0ea5e9?text=${encodeURIComponent(
+                    movie.title
+                  )}`;
+                }}
               />
             </div>
 
-            {/* Watchlist button */}
+            {/* Button 1: + Add to Watchlist (Vibrant Electric Sky Blue) */}
             <button
-              onClick={() => inWatchlist ? removeFromWatchlist(movie.contentId) : addToWatchlist(movie)}
-              id="watchlist-toggle-btn"
+              type="button"
+              onClick={() =>
+                inWatchlist ? removeFromWatchlist(movie.contentId) : addToWatchlist(movie)
+              }
+              id="detail-watchlist-btn"
               style={{
                 width: '100%',
-                marginTop: '16px',
-                padding: '13px',
-                borderRadius: '10px',
-                fontFamily: 'inherit',
+                height: '46px',
+                borderRadius: '12px',
+                background: inWatchlist
+                  ? 'rgba(14, 165, 233, 0.18)'
+                  : 'linear-gradient(135deg, #0ea5e9 0%, #2563eb 100%)',
+                color: inWatchlist ? '#38bdf8' : '#ffffff',
+                border: inWatchlist
+                  ? '1px solid rgba(56, 189, 248, 0.5)'
+                  : 'none',
                 fontWeight: 700,
-                fontSize: '0.875rem',
-                display: 'flex',
+                fontSize: '0.88rem',
+                fontFamily: 'Outfit, Inter, sans-serif',
+                display: 'inline-flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 gap: '8px',
-                background: inWatchlist ? 'transparent' : 'linear-gradient(135deg, #10b981, #065f46)',
-                color: inWatchlist ? 'var(--accent-bright)' : '#fff',
-                border: inWatchlist ? '2px solid var(--accent-primary)' : 'none',
                 cursor: 'pointer',
-                boxShadow: inWatchlist ? 'none' : '0 4px 20px rgba(16,185,129,0.28)',
-                transition: 'opacity 0.18s',
+                boxShadow: inWatchlist
+                  ? 'none'
+                  : '0 4px 18px rgba(14, 165, 233, 0.35)',
+                transition: 'all 0.2s ease',
               }}
-              onMouseEnter={(e) => (e.currentTarget.style.opacity = '0.88')}
-              onMouseLeave={(e) => (e.currentTarget.style.opacity = '1')}
+              className="hover:scale-[1.02] active:scale-[0.98]"
             >
-              {inWatchlist ? '✓ In Watchlist' : '+ Add to Watchlist'}
+              {inWatchlist ? (
+                <>
+                  <IconCheck size={16} />
+                  <span>In Watchlist</span>
+                </>
+              ) : (
+                <>
+                  <span style={{ fontSize: '1.1rem', lineHeight: 1 }}>+</span>
+                  <span>Add to Watchlist</span>
+                </>
+              )}
             </button>
 
-            {/* Watch Trailer button (available on 100% of titles) */}
+            {/* Button 2: ▶ Watch Official Trailer (Dark with Sky Blue border) */}
             <button
+              type="button"
               onClick={() => setShowTrailer(true)}
-              id="watch-trailer-btn"
+              id="detail-watch-trailer-btn"
               style={{
                 width: '100%',
-                marginTop: '10px',
-                padding: '12px',
-                borderRadius: '10px',
-                fontFamily: 'inherit',
+                height: '46px',
+                borderRadius: '12px',
+                background: 'rgba(2, 132, 199, 0.2)',
+                color: '#38bdf8',
+                border: '1px solid rgba(56, 189, 248, 0.45)',
                 fontWeight: 700,
-                fontSize: '0.875rem',
-                display: 'flex',
+                fontSize: '0.86rem',
+                fontFamily: 'Outfit, Inter, sans-serif',
+                display: 'inline-flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 gap: '8px',
-                background: 'rgba(16,185,129,0.12)',
-                color: 'var(--accent-bright)',
-                border: '1px solid rgba(16,185,129,0.3)',
                 cursor: 'pointer',
-                transition: 'all 0.2s',
+                transition: 'all 0.2s ease',
               }}
-              onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(16,185,129,0.22)'; e.currentTarget.style.borderColor = 'var(--accent-primary)'; }}
-              onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(16,185,129,0.12)'; e.currentTarget.style.borderColor = 'rgba(16,185,129,0.3)'; }}
+              className="hover:bg-sky-500/25 hover:border-sky-400 hover:text-white hover:scale-[1.02] active:scale-[0.98]"
             >
-              ▶ Watch Official Trailer
+              <IconPlay size={14} />
+              <span>Watch Official Trailer</span>
             </button>
-
-            {/* Quick platform chips */}
-            {uniquePlatforms.length > 0 && (
-              <div style={{ marginTop: '20px' }}>
-                <p style={{ fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--text-muted)', marginBottom: '10px', fontWeight: 600 }}>
-                  Streaming On
-                </p>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  {uniquePlatforms.slice(0, 4).map(p => {
-                    const directUrl = getDirectPlatformUrl(p.name, movie.title);
-                    return (
-                      <a
-                        key={p.platformId}
-                        href={directUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        style={{
-                          padding: '8px 12px',
-                          borderRadius: '8px',
-                          background: 'rgba(16,185,129,0.06)',
-                          border: '1px solid rgba(16,185,129,0.14)',
-                          fontSize: '0.8rem',
-                          color: 'var(--text-accent)',
-                          fontWeight: 500,
-                          textDecoration: 'none',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'space-between',
-                          transition: 'all 0.18s ease',
-                        }}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.background = 'rgba(16,185,129,0.14)';
-                          e.currentTarget.style.borderColor = 'rgba(16,185,129,0.35)';
-                          e.currentTarget.style.color = 'var(--accent-bright)';
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.background = 'rgba(16,185,129,0.06)';
-                          e.currentTarget.style.borderColor = 'rgba(16,185,129,0.14)';
-                          e.currentTarget.style.color = 'var(--text-accent)';
-                        }}
-                      >
-                        <span>📺 {p.name}</span>
-                        <span style={{ fontSize: '0.75rem', opacity: 0.7 }}>↗</span>
-                      </a>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
           </div>
 
-          {/* ── Right: Info panel ─────────────────────────────────────── */}
-          <div style={{ flex: 1, paddingTop: '24px', minWidth: 0 }}>
-
-            {/* Badges */}
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '16px' }}>
-              <span className="accent-badge" style={{ background: 'rgba(16,185,129,0.18)', borderColor: 'rgba(16,185,129,0.35)' }}>
+          {/* ── Right Column: Info, Tabs, Description & Bottom Tiles ───────── */}
+          <div
+            style={{
+              flex: 1,
+              minWidth: 0,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '18px',
+            }}
+          >
+            {/* Top Genre Pills */}
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}>
+              <span
+                style={{
+                  padding: '4px 14px',
+                  borderRadius: '999px',
+                  background: 'rgba(2, 132, 199, 0.2)',
+                  border: '1px solid rgba(56, 189, 248, 0.35)',
+                  color: '#7dd3fc',
+                  fontSize: '0.78rem',
+                  fontWeight: 600,
+                }}
+              >
                 {movie.type}
               </span>
-              {(movie.genres ?? []).map(g => (
-                <Link
+              {(movie.genres ?? []).slice(0, 3).map((g) => (
+                <span
                   key={g}
-                  to={`/search?genre=${encodeURIComponent(g)}`}
-                  className="accent-badge"
-                  style={{ textDecoration: 'none', cursor: 'pointer' }}
-                  onMouseEnter={(e) => (e.currentTarget.style.borderColor = 'rgba(16,185,129,0.55)')}
-                  onMouseLeave={(e) => (e.currentTarget.style.borderColor = 'rgba(16,185,129,0.22)')}
+                  style={{
+                    padding: '4px 14px',
+                    borderRadius: '999px',
+                    background: 'rgba(2, 132, 199, 0.2)',
+                    border: '1px solid rgba(56, 189, 248, 0.35)',
+                    color: '#7dd3fc',
+                    fontSize: '0.78rem',
+                    fontWeight: 600,
+                  }}
                 >
                   {g}
-                </Link>
+                </span>
               ))}
             </div>
 
             {/* Title */}
-            <h1 style={{
-              fontFamily: "'Outfit', sans-serif",
-              fontSize: 'clamp(1.8rem, 4vw, 3rem)',
-              fontWeight: 900,
-              lineHeight: 1.1,
-              color: '#f0fdf4',
-              marginBottom: '18px',
-              letterSpacing: '-0.02em',
-            }}>
+            <h1
+              className="font-outfit font-black text-white tracking-tight leading-none drop-shadow-xl"
+              style={{
+                fontSize: 'clamp(2.4rem, 4.2vw, 3.8rem)',
+                margin: 0,
+                lineHeight: 1.08,
+                letterSpacing: '-0.025em',
+              }}
+            >
               {movie.title}
             </h1>
 
-            {/* Meta row */}
-            <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '14px', marginBottom: '32px' }}>
-              {rating != null && (
-                <span className="rating-badge" style={{ fontSize: '0.92rem', padding: '5px 13px' }}>
-                  ★ {rating.toFixed(1)} / 10
+            {/* Metadata Row: Rating, Length, Year, Language */}
+            <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '14px' }}>
+              {/* Rating Pill */}
+              <div
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  padding: '4px 12px',
+                  borderRadius: '8px',
+                  background: 'rgba(2, 132, 199, 0.2)',
+                  border: '1px solid rgba(56, 189, 248, 0.35)',
+                  color: '#38bdf8',
+                  fontSize: '0.84rem',
+                  fontWeight: 700,
+                }}
+              >
+                <IconStar size={13} className="text-amber-400" />
+                <span>{rating} / 10</span>
+              </div>
+
+              {/* Length */}
+              {(duration || seasons) && (
+                <span style={{ color: '#94a3b8', fontSize: '0.86rem', fontWeight: 600 }}>
+                  {duration ?? seasons}
                 </span>
               )}
-              {(duration || seasons) && (
-                <span style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>{duration ?? seasons}</span>
-              )}
-              <span style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>{year}</span>
-              {origLang && <span className="accent-badge">🌐 {origLang}</span>}
+
+              {/* Year */}
+              <span style={{ color: '#94a3b8', fontSize: '0.86rem', fontWeight: 600 }}>
+                {year}
+              </span>
+
+              {/* Audio / Language */}
+              <div
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  padding: '4px 12px',
+                  borderRadius: '8px',
+                  background: 'rgba(2, 132, 199, 0.2)',
+                  border: '1px solid rgba(56, 189, 248, 0.35)',
+                  color: '#7dd3fc',
+                  fontSize: '0.84rem',
+                  fontWeight: 600,
+                }}
+              >
+                <span>🌐 {origLang}</span>
+              </div>
             </div>
 
-            {/* ── Tab navigation ─────────────────────────────────────── */}
-            <div className="tab-nav-wrap">
-              {tabs.map(tab => (
-                <button
-                  key={tab.id}
-                  onClick={() => setActive(tab.id)}
-                  className={`tab-btn${activeTab === tab.id ? ' active' : ''}`}
-                >
-                  {tab.label}
-                </button>
-              ))}
+            {/* Tab Navigation (Overview | Cast | Platforms) */}
+            <div
+              style={{
+                display: 'flex',
+                gap: '8px',
+                padding: '4px 0',
+              }}
+            >
+              {tabs.map((tab) => {
+                const active = activeTab === tab.id;
+                return (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => setActive(tab.id)}
+                    style={{
+                      padding: '8px 22px',
+                      borderRadius: '12px',
+                      background: active
+                        ? 'linear-gradient(135deg, #0ea5e9 0%, #2563eb 100%)'
+                        : 'transparent',
+                      color: active ? '#ffffff' : '#94a3b8',
+                      border: 'none',
+                      fontWeight: active ? 700 : 600,
+                      fontSize: '0.88rem',
+                      fontFamily: 'Outfit, Inter, sans-serif',
+                      cursor: 'pointer',
+                      transition: 'all 0.15s ease',
+                      boxShadow: active ? '0 4px 14px rgba(14, 165, 233, 0.35)' : 'none',
+                    }}
+                    className={!active ? 'hover:text-white hover:bg-white/[0.04]' : ''}
+                  >
+                    {tab.label}
+                  </button>
+                );
+              })}
             </div>
 
-            {/* ── Tab content ────────────────────────────────────────── */}
-            <div key={activeTab} className="animate-fade-in">
-
-              {/* Overview */}
-              {activeTab === 'overview' && (
+            {/* Tab Body: Overview (Default) */}
+            {activeTab === 'overview' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                {/* Description */}
                 <div>
-
-                  {/* ── Description / Synopsis ──────────────────────── */}
-                  <div style={{
-                    background: 'rgba(13,20,13,0.55)',
-                    border: '1px solid rgba(16,185,129,0.10)',
-                    borderRadius: '12px',
-                    padding: '22px 24px',
-                    marginBottom: '20px',
-                  }}>
-                    <p style={{
-                      fontSize: '0.65rem',
+                  <p
+                    style={{
+                      fontSize: '0.66rem',
+                      fontWeight: 800,
+                      letterSpacing: '0.14em',
                       textTransform: 'uppercase',
-                      letterSpacing: '0.1em',
-                      color: 'var(--accent-primary)',
-                      marginBottom: '12px',
-                      fontWeight: 700,
-                    }}>
-                      Description
-                    </p>
-                    {description ? (
-                      <p style={{
-                        fontSize: '0.925rem',
-                        color: 'var(--text-secondary)',
-                        lineHeight: 1.75,
-                        margin: 0,
-                      }}>
-                        {description}
-                      </p>
-                    ) : (
-                      <p style={{
-                        fontSize: '0.875rem',
-                        color: 'var(--text-muted)',
-                        fontStyle: 'italic',
-                        margin: 0,
-                        lineHeight: 1.6,
-                      }}>
-                        No description available for this title.
-                      </p>
-                    )}
-                  </div>
-
-                  {/* ── Info tiles grid ─────────────────────────────── */}
-                  <div style={{
-                    display: 'grid',
-                    gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))',
-                    gap: '14px',
-                    marginBottom: '20px',
-                  }}>
-                    <InfoTile label="Type"     value={movie.type} />
-                    <InfoTile label="Year"     value={year} />
-                    <InfoTile label="Rating"   value={rating != null ? `${rating.toFixed(1)} / 10` : 'N/A'} />
-                    <InfoTile label="Duration" value={duration ?? seasons} />
-                    <InfoTile label="Language" value={origLang} />
-                  </div>
-
-                  {/* ── Available Languages ─────────────────────────── */}
-                  {uniqueLanguages.length > 0 && (
-                    <div style={{
-                      background: 'rgba(13,20,13,0.70)',
-                      border: '1px solid rgba(16,185,129,0.10)',
-                      borderRadius: '10px',
-                      padding: '20px',
-                    }}>
-                      <p style={{ fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--text-muted)', marginBottom: '14px', fontWeight: 600 }}>
-                        Available Languages
-                      </p>
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                        {uniqueLanguages.map(l => (
-                          <span key={`${l.languageId}-${l.type}`} className="accent-badge">
-                            {langName(l.languageName)}
-                            <span style={{ opacity: 0.6, marginLeft: '5px', fontWeight: 400 }}>({l.type})</span>
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  )}
+                      color: '#38bdf8',
+                      margin: '0 0 6px 0',
+                    }}
+                  >
+                    Description
+                  </p>
+                  <p
+                    style={{
+                      fontSize: '0.94rem',
+                      lineHeight: 1.65,
+                      color: '#cbd5e1',
+                      margin: 0,
+                      maxWidth: '780px',
+                      display: '-webkit-box',
+                      WebkitLineClamp: 3,
+                      WebkitBoxOrient: 'vertical',
+                      overflow: 'hidden',
+                    }}
+                  >
+                    {description}
+                  </p>
                 </div>
-              )}
 
-              {/* Cast */}
-              {activeTab === 'cast' && (
-                <div>
-                  {(movie.actors ?? []).length === 0 ? (
-                    <div style={{ padding: '40px 0', textAlign: 'center', color: 'var(--text-muted)' }}>
-                      <span style={{ fontSize: '2.5rem', display: 'block', marginBottom: '12px' }}>🎭</span>
-                      No cast information available.
-                    </div>
-                  ) : (
-                    <div style={{
-                      display: 'grid',
-                      gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))',
-                      gap: '16px',
-                    }}>
-                      {movie.actors!.map(actor => (
-                        <div key={actor.actorId} style={{
-                          background: 'rgba(13,20,13,0.70)',
-                          border: '1px solid rgba(16,185,129,0.10)',
-                          borderRadius: '12px',
-                          padding: '20px 14px',
+                {/* 5 Bottom Metadata Cards */}
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(5, 1fr)',
+                    gap: '14px',
+                    maxWidth: '820px',
+                  }}
+                >
+                  {/* Card 1: TYPE */}
+                  <div
+                    style={{
+                      background: 'rgba(11, 16, 28, 0.75)',
+                      border: '1px solid rgba(255, 255, 255, 0.08)',
+                      borderRadius: '14px',
+                      padding: '14px 16px',
+                      backdropFilter: 'blur(10px)',
+                    }}
+                  >
+                    <p style={{ fontSize: '0.62rem', fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase', color: '#64748b', margin: '0 0 6px 0' }}>
+                      Type
+                    </p>
+                    <p style={{ fontSize: '0.96rem', fontWeight: 700, color: '#ffffff', margin: 0 }} className="truncate">
+                      {movie.type}
+                    </p>
+                  </div>
+
+                  {/* Card 2: YEAR */}
+                  <div
+                    style={{
+                      background: 'rgba(11, 16, 28, 0.75)',
+                      border: '1px solid rgba(255, 255, 255, 0.08)',
+                      borderRadius: '14px',
+                      padding: '14px 16px',
+                      backdropFilter: 'blur(10px)',
+                    }}
+                  >
+                    <p style={{ fontSize: '0.62rem', fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase', color: '#64748b', margin: '0 0 6px 0' }}>
+                      Year
+                    </p>
+                    <p style={{ fontSize: '0.96rem', fontWeight: 700, color: '#ffffff', margin: 0 }} className="truncate">
+                      {year}
+                    </p>
+                  </div>
+
+                  {/* Card 3: RATING */}
+                  <div
+                    style={{
+                      background: 'rgba(11, 16, 28, 0.75)',
+                      border: '1px solid rgba(255, 255, 255, 0.08)',
+                      borderRadius: '14px',
+                      padding: '14px 16px',
+                      backdropFilter: 'blur(10px)',
+                    }}
+                  >
+                    <p style={{ fontSize: '0.62rem', fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase', color: '#64748b', margin: '0 0 6px 0' }}>
+                      Rating
+                    </p>
+                    <p style={{ fontSize: '0.96rem', fontWeight: 700, color: '#ffffff', margin: 0 }} className="truncate">
+                      {rating} / 10
+                    </p>
+                  </div>
+
+                  {/* Card 4: DURATION */}
+                  <div
+                    style={{
+                      background: 'rgba(11, 16, 28, 0.75)',
+                      border: '1px solid rgba(255, 255, 255, 0.08)',
+                      borderRadius: '14px',
+                      padding: '14px 16px',
+                      backdropFilter: 'blur(10px)',
+                    }}
+                  >
+                    <p style={{ fontSize: '0.62rem', fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase', color: '#64748b', margin: '0 0 6px 0' }}>
+                      Duration
+                    </p>
+                    <p style={{ fontSize: '0.96rem', fontWeight: 700, color: '#ffffff', margin: 0 }} className="truncate">
+                      {duration ?? seasons ?? '—'}
+                    </p>
+                  </div>
+
+                  {/* Card 5: LANGUAGE */}
+                  <div
+                    style={{
+                      background: 'rgba(11, 16, 28, 0.75)',
+                      border: '1px solid rgba(255, 255, 255, 0.08)',
+                      borderRadius: '14px',
+                      padding: '14px 16px',
+                      backdropFilter: 'blur(10px)',
+                    }}
+                  >
+                    <p style={{ fontSize: '0.62rem', fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase', color: '#64748b', margin: '0 0 6px 0' }}>
+                      Language
+                    </p>
+                    <p style={{ fontSize: '0.96rem', fontWeight: 700, color: '#ffffff', margin: 0 }} className="truncate">
+                      {origLang}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Tab Body: Cast */}
+            {activeTab === 'cast' && (
+              <div
+                style={{
+                  maxHeight: '260px',
+                  overflowY: 'auto',
+                  paddingRight: '12px',
+                }}
+                className="no-scrollbar"
+              >
+                {(movie.actors ?? []).length === 0 ? (
+                  <div className="py-6 text-neutral-400 text-xs">No cast listed.</div>
+                ) : (
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: '12px' }}>
+                    {movie.actors!.map((actor) => (
+                      <div
+                        key={actor.actorId}
+                        style={{
+                          padding: '12px',
+                          borderRadius: '14px',
+                          background: 'rgba(11, 16, 28, 0.75)',
+                          border: '1px solid rgba(255, 255, 255, 0.08)',
                           display: 'flex',
                           flexDirection: 'column',
                           alignItems: 'center',
                           textAlign: 'center',
-                          gap: '10px',
-                          transition: 'border-color 0.2s',
-                        }}
-                          onMouseEnter={(e) => (e.currentTarget.style.borderColor = 'rgba(16,185,129,0.28)')}
-                          onMouseLeave={(e) => (e.currentTarget.style.borderColor = 'rgba(16,185,129,0.10)')}
-                        >
-                          <div style={{
-                            width: '64px',
-                            height: '64px',
-                            borderRadius: '50%',
-                            overflow: 'hidden',
-                            background: 'rgba(16,185,129,0.10)',
-                            border: '2px solid rgba(16,185,129,0.25)',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
-                          }}>
-                            {actor.profilePath ? (
-                              <img
-                                src={actorProfileUrl(actor.profilePath)!}
-                                alt={actor.name}
-                                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                                onError={(e) => {
-                                  (e.target as HTMLElement).style.display = 'none';
-                                }}
-                              />
-                            ) : (
-                              <span style={{ fontSize: '1.4rem' }}>🎭</span>
-                            )}
-                          </div>
-                          <div>
-                            <p style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '4px' }}>
-                              {actor.name}
-                            </p>
-                            {actor.roleName && (
-                              <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-                                {actor.roleName}
-                              </p>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Platforms */}
-              {activeTab === 'platforms' && (
-                <div>
-                  {uniquePlatforms.length === 0 ? (
-                    <div style={{
-                      padding: '36px 24px',
-                      textAlign: 'center',
-                      background: 'rgba(13,20,13,0.5)',
-                      borderRadius: '14px',
-                      border: '1px solid rgba(16,185,129,0.12)',
-                    }}>
-                      <span style={{ fontSize: '2rem', display: 'block', marginBottom: '10px' }}>🎬</span>
-                      <h4 style={{ fontFamily: "'Outfit', sans-serif", fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '6px' }}>
-                        Not Currently on Subscription Streaming
-                      </h4>
-                      <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', maxWidth: '440px', margin: '0 auto 16px', lineHeight: 1.5 }}>
-                        This title may currently be in theatrical release or available via digital purchase. You can verify real-time global availability:
-                      </p>
-                      <a
-                        href={`https://www.justwatch.com/search?q=${encodeURIComponent(movie.title)}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
                           gap: '8px',
-                          padding: '10px 20px',
-                          borderRadius: '10px',
-                          background: 'rgba(16,185,129,0.10)',
-                          border: '1px solid rgba(16,185,129,0.25)',
-                          color: 'var(--accent-bright)',
-                          fontFamily: "'Outfit', sans-serif",
-                          fontSize: '0.85rem',
-                          fontWeight: 700,
-                          textDecoration: 'none',
-                          transition: 'all 0.18s ease',
-                        }}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.background = 'rgba(16,185,129,0.18)';
-                          e.currentTarget.style.borderColor = 'var(--accent-primary)';
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.background = 'rgba(16,185,129,0.10)';
-                          e.currentTarget.style.borderColor = 'rgba(16,185,129,0.25)';
                         }}
                       >
-                        <span>Check Live Availability on JustWatch</span>
-                        <span>↗</span>
-                      </a>
-                    </div>
-                  ) : (
-                    <div style={{
-                      display: 'grid',
-                      gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))',
-                      gap: '16px',
-                    }}>
-                      {uniquePlatforms.map(p => {
-                        const meta = getPlatformMeta(p.name);
-                        const directUrl = getDirectPlatformUrl(p.name, movie.title);
-                        return (
-                          <div key={p.platformId} style={{
-                            background: 'rgba(13,20,13,0.70)',
-                            border: `1px solid ${meta.border}`,
-                            borderRadius: '14px',
-                            padding: '18px 20px',
-                            display: 'flex',
-                            flexDirection: 'column',
-                            justifyContent: 'space-between',
-                            gap: '16px',
-                            transition: 'all 0.2s ease',
+                        <div
+                          style={{
+                            width: '48px',
+                            height: '48px',
+                            borderRadius: '50%',
+                            overflow: 'hidden',
+                            background: '#090d16',
+                            border: '1px solid rgba(255, 255, 255, 0.1)',
                           }}
-                            onMouseEnter={(e) => {
-                              e.currentTarget.style.borderColor = meta.accent;
-                              e.currentTarget.style.boxShadow = `0 6px 24px ${meta.bg}`;
-                              e.currentTarget.style.transform = 'translateY(-2px)';
-                            }}
-                            onMouseLeave={(e) => {
-                              e.currentTarget.style.borderColor = meta.border;
-                              e.currentTarget.style.boxShadow = 'none';
-                              e.currentTarget.style.transform = 'translateY(0)';
-                            }}
-                          >
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-                              <div style={{
-                                width: '44px',
-                                height: '44px',
-                                borderRadius: '12px',
-                                background: meta.bg,
-                                border: `1px solid ${meta.border}`,
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                fontSize: '1.35rem',
-                                flexShrink: 0,
-                              }}>
-                                {meta.icon}
-                              </div>
-                              <h4 style={{
-                                fontFamily: "'Outfit', sans-serif",
-                                fontSize: '1.05rem',
-                                fontWeight: 700,
-                                color: 'var(--text-primary)',
-                                margin: 0,
-                              }}>
-                                {p.name}
-                              </h4>
+                        >
+                          {actor.profilePath ? (
+                            <img
+                              src={actorProfileUrl(actor.profilePath)!}
+                              alt={actor.name}
+                              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                            />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center text-neutral-400">
+                              <IconUser size={18} />
                             </div>
-
-                            <a
-                              href={directUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              style={{
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                gap: '8px',
-                                padding: '10px 16px',
-                                borderRadius: '10px',
-                                background: meta.bg,
-                                border: `1px solid ${meta.border}`,
-                                color: meta.accent,
-                                textDecoration: 'none',
-                                fontFamily: "'Outfit', sans-serif",
-                                fontSize: '0.85rem',
-                                fontWeight: 700,
-                                transition: 'all 0.18s ease',
-                              }}
-                              onMouseEnter={(e) => {
-                                e.currentTarget.style.filter = 'brightness(1.25)';
-                                e.currentTarget.style.transform = 'scale(1.02)';
-                              }}
-                              onMouseLeave={(e) => {
-                                e.currentTarget.style.filter = 'none';
-                                e.currentTarget.style.transform = 'scale(1)';
-                              }}
-                            >
-                              <span>Watch on {p.name}</span>
-                              <span style={{ fontSize: '0.9rem' }}>↗</span>
-                            </a>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Episodes */}
-              {activeTab === 'episodes' && movie.type === 'Series' && (
-                <div>
-                  {(movie.seasons ?? []).length === 0 ? (
-                    <div style={{ padding: '40px 0', textAlign: 'center', color: 'var(--text-muted)' }}>
-                      No episode data available.
-                    </div>
-                  ) : (
-                    movie.seasons!
-                      .filter(season => season.seasonNumber > 0 && season.episodes.length > 0)
-                      .map(season => (
-                      <div key={season.seasonId} style={{ marginBottom: '36px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
-                          <div style={{ width: '3px', height: '22px', borderRadius: '2px', background: 'var(--gradient-accent)', flexShrink: 0 }} />
-                          <h3 style={{ fontFamily: "'Outfit', sans-serif", fontSize: '1.05rem', fontWeight: 700 }}>
-                            Season {season.seasonNumber}
-                          </h3>
-                          <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginLeft: '4px' }}>
-                            {season.episodes.length} episode{season.episodes.length !== 1 ? 's' : ''}
-                          </span>
+                          )}
                         </div>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                          {season.episodes.map(ep => (
-                            <div key={ep.episodeId} style={{
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: '16px',
-                              padding: '14px 18px',
-                              background: 'rgba(13,20,13,0.65)',
-                              border: '1px solid rgba(16,185,129,0.09)',
-                              borderRadius: '10px',
-                              transition: 'border-color 0.2s, background 0.2s',
-                            }}
-                              onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'rgba(16,185,129,0.25)'; e.currentTarget.style.background = 'rgba(16,185,129,0.05)'; }}
-                              onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'rgba(16,185,129,0.09)'; e.currentTarget.style.background = 'rgba(13,20,13,0.65)'; }}
-                            >
-                              <div style={{
-                                width: '38px',
-                                height: '38px',
-                                borderRadius: '9px',
-                                background: 'linear-gradient(135deg, #10b981, #065f46)',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                fontWeight: 700,
-                                fontSize: '0.85rem',
-                                color: '#fff',
-                                flexShrink: 0,
-                                boxShadow: '0 2px 8px rgba(16,185,129,0.25)',
-                              }}>
-                                {ep.episodeNumber ?? '?'}
-                              </div>
-                              <div style={{ flex: 1 }}>
-                                <p style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: ep.duration ? '3px' : 0 }}>
-                                  {ep.title ?? `Episode ${ep.episodeNumber}`}
-                                </p>
-                                {ep.duration && (
-                                  <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{ep.duration} min</p>
-                                )}
-                              </div>
-                            </div>
-                          ))}
+                        <div>
+                          <p style={{ fontSize: '0.78rem', fontWeight: 700, color: '#f1f5f9', margin: 0 }} className="truncate">
+                            {actor.name}
+                          </p>
+                          {actor.roleName && (
+                            <p style={{ fontSize: '0.68rem', color: '#94a3b8', margin: 0 }} className="truncate">
+                              {actor.roleName}
+                            </p>
+                          )}
                         </div>
                       </div>
-                    ))
-                  )}
-                </div>
-              )}
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
 
-            </div>{/* end tab content */}
-          </div>{/* end info panel */}
-        </div>{/* end flex row */}
-      </div>{/* end content panel */}
 
-      {/* SectionLabel used for future sections */}
-      {false && <SectionLabel>placeholder</SectionLabel>}
-
-      {/* ── Trailer modal (Universal: Works for 100% of titles) ──────────── */}
-      {showTrailer && (
-        <div style={{
-          position: 'fixed', inset: 0, zIndex: 1000,
-          background: 'rgba(0,0,0,0.88)', backdropFilter: 'blur(10px)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px'
-        }} onClick={() => setShowTrailer(false)}>
-          <div style={{
-            position: 'relative', width: '100%', maxWidth: '960px', aspectRatio: '16/9',
-            background: '#000', borderRadius: '16px', overflow: 'hidden',
-            boxShadow: '0 25px 70px rgba(0,0,0,0.9), 0 0 0 1px rgba(16,185,129,0.3)'
-          }} onClick={e => e.stopPropagation()}>
-            <div style={{
-              position: 'absolute', top: '14px', right: '14px', zIndex: 10,
-              display: 'flex', alignItems: 'center', gap: '10px',
-            }}>
-              <a
-                href={movie.trailerKey
-                  ? `https://www.youtube.com/watch?v=${movie.trailerKey}`
-                  : `https://www.youtube.com/results?search_query=${encodeURIComponent(movie.title + ' ' + (movie.releaseYear || '') + ' official trailer')}`
-                }
-                target="_blank"
-                rel="noopener noreferrer"
+            {/* Tab Body: Episodes (Series only) */}
+            {activeTab === 'episodes' && movie.type === 'Series' && (
+              <div
                 style={{
-                  background: 'rgba(0,0,0,0.75)',
-                  border: '1px solid rgba(255,255,255,0.2)',
-                  color: '#fff',
-                  fontSize: '0.78rem',
-                  fontWeight: 600,
-                  borderRadius: '20px',
-                  padding: '6px 14px',
-                  textDecoration: 'none',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  backdropFilter: 'blur(8px)',
-                  transition: 'background 0.2s, border-color 0.2s',
+                  maxHeight: '260px',
+                  overflowY: 'auto',
+                  paddingRight: '12px',
                 }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.background = 'rgba(239, 68, 68, 0.85)';
-                  e.currentTarget.style.borderColor = 'rgba(239, 68, 68, 0.9)';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = 'rgba(0,0,0,0.75)';
-                  e.currentTarget.style.borderColor = 'rgba(255,255,255,0.2)';
-                }}
+                className="no-scrollbar"
               >
-                <span>▶</span> Open on YouTube ↗
-              </a>
+                {movie.seasons
+                  ?.filter((s) => s.seasonNumber > 0 && s.episodes.length > 0)
+                  .map((season) => (
+                    <div key={season.seasonId} style={{ marginBottom: '14px' }}>
+                      <h3 style={{ fontSize: '0.86rem', fontWeight: 700, color: '#38bdf8', margin: '0 0 8px 0' }}>
+                        Season {season.seasonNumber}
+                      </h3>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                        {season.episodes.map((ep) => (
+                          <div
+                            key={ep.episodeId}
+                            style={{
+                              padding: '10px 14px',
+                              borderRadius: '10px',
+                              background: 'rgba(11, 16, 28, 0.75)',
+                              border: '1px solid rgba(255, 255, 255, 0.06)',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '12px',
+                            }}
+                          >
+                            <span style={{ fontSize: '0.74rem', fontWeight: 700, color: '#38bdf8' }}>
+                              EP {ep.episodeNumber ?? '1'}
+                            </span>
+                            <span style={{ fontSize: '0.82rem', fontWeight: 500, color: '#fff', flex: 1 }} className="truncate">
+                              {ep.title ?? `Episode ${ep.episodeNumber}`}
+                            </span>
+                            {ep.duration && (
+                              <span style={{ fontSize: '0.72rem', color: '#94a3b8' }}>
+                                {ep.duration}m
+                              </span>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* ── Official YouTube Trailer Modal ─────────────────────────────── */}
+      {showTrailer && (
+        <div
+          className="fixed inset-0 z-50 bg-black/90 backdrop-blur-md flex items-center justify-center p-4"
+          onClick={() => setShowTrailer(false)}
+        >
+          <div
+            className="relative w-full max-w-4xl aspect-video bg-black rounded-3xl overflow-hidden border border-sky-500/30 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="absolute top-4 right-4 z-20">
               <button
                 onClick={() => setShowTrailer(false)}
-                aria-label="Close trailer modal"
-                style={{
-                  background: 'rgba(0,0,0,0.75)', border: '1px solid rgba(255,255,255,0.2)',
-                  color: '#fff', fontSize: '1.2rem',
-                  borderRadius: '50%', width: '36px', height: '36px', cursor: 'pointer',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  backdropFilter: 'blur(8px)',
-                  transition: 'background 0.2s, border-color 0.2s',
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.background = 'rgba(16,185,129,0.85)';
-                  e.currentTarget.style.borderColor = 'var(--accent-primary)';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = 'rgba(0,0,0,0.75)';
-                  e.currentTarget.style.borderColor = 'rgba(255,255,255,0.2)';
-                }}
-              >✕</button>
+                className="w-9 h-9 rounded-full bg-black/70 hover:bg-sky-500 text-white flex items-center justify-center backdrop-blur-md border border-white/20 transition-colors cursor-pointer"
+                aria-label="Close"
+              >
+                <IconClose size={16} />
+              </button>
             </div>
+
             <iframe
-              src={movie.trailerKey
-                ? `https://www.youtube-nocookie.com/embed/${movie.trailerKey}?autoplay=1&rel=0`
-                : `https://www.youtube-nocookie.com/embed?listType=search&list=${encodeURIComponent(movie.title + ' ' + (movie.releaseYear || '') + ' official trailer')}&autoplay=1&rel=0`
+              src={
+                movie.trailerKey
+                  ? `https://www.youtube-nocookie.com/embed/${movie.trailerKey}?autoplay=1&rel=0`
+                  : `https://www.youtube-nocookie.com/embed?listType=search&list=${encodeURIComponent(
+                      movie.title + ' ' + (movie.releaseYear || '') + ' official trailer'
+                    )}&autoplay=1&rel=0`
               }
-              title={`${movie.title} Official Trailer`}
-              style={{ width: '100%', height: '100%', border: 'none' }}
+              title={`${movie.title} Trailer`}
+              className="w-full h-full border-none"
               allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
               allowFullScreen
             />
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 }

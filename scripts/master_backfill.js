@@ -17,9 +17,15 @@
 
 const https = require('https');
 const zlib = require('zlib');
-const mysql = require('mysql2/promise');
+const path = require('path');
+let mysql;
+try {
+  mysql = require('mysql2/promise');
+} catch (e) {
+  mysql = require(path.join(__dirname, '../backend/node_modules/mysql2/promise'));
+}
 
-const API_KEY = 'f0197a9fc1809810ff1f5485f7d6d78d';
+const API_KEY = process.env.TMDB_API_KEY || '';
 const WORKING_IP = '3.175.86.50'; // Pinned working CloudFront IP to avoid ISP TLS resets
 const CONCURRENCY = 4; // 4 concurrent titles at a time
 
@@ -40,9 +46,10 @@ function fetchTMDB(path) {
       method: 'GET',
       servername: 'api.themoviedb.org',
       lookup: (hostname, options, cb) => {
-        if (typeof options === 'function') options(null, WORKING_IP, 4);
-        else if (options && options.all) cb(null, [{ address: WORKING_IP, family: 4 }]);
-        else cb(null, WORKING_IP, 4);
+        const callback = typeof options === 'function' ? options : cb;
+        const wantsAll = options && typeof options === 'object' && options.all;
+        if (wantsAll) callback(null, [{ address: WORKING_IP, family: 4 }]);
+        else callback(null, WORKING_IP, 4);
       },
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0',
@@ -84,10 +91,13 @@ function fetchTMDB(path) {
 
 const LANG_MAP = {
   en:'English',hi:'Hindi',ja:'Japanese',ko:'Korean',es:'Spanish',
-  fr:'French',de:'German',it:'Italian',zh:'Chinese',pt:'Portuguese',
+  fr:'French',de:'German',it:'Italian',zh:'Chinese',cn:'Chinese',pt:'Portuguese',
   ru:'Russian',ar:'Arabic',ta:'Tamil',te:'Telugu',ml:'Malayalam',
   bn:'Bengali',tr:'Turkish',th:'Thai',nl:'Dutch',sv:'Swedish',
   no:'Norwegian',da:'Danish',fi:'Finnish',pl:'Polish',id:'Indonesian',
+  tl:'Filipino',el:'Greek',he:'Hebrew',fa:'Persian',kn:'Kannada',
+  ca:'Catalan',pa:'Punjabi',cs:'Czech',sr:'Serbian',jv:'Javanese',
+  hu:'Hungarian',lv:'Latvian',zu:'Zulu',mn:'Mongolian'
 };
 
 function normalizeGenre(name) {
@@ -196,6 +206,47 @@ async function processSingleItem(db, row, stats) {
     stats.actors++;
   }
 
+  // 4b. Directors & Series Creators
+  const directorsToAdd = [];
+  if (type === 'Movie') {
+    if (credRes.ok && credRes.data?.crew) {
+      const dirCrew = credRes.data.crew.filter(c => c.job === 'Director');
+      for (const d of dirCrew) {
+        if (d.name && !directorsToAdd.some(x => x.name === d.name)) {
+          directorsToAdd.push({ name: d.name, profile_path: d.profile_path || null, id: d.id });
+        }
+      }
+    }
+  } else if (type === 'Series') {
+    if (main.created_by && Array.isArray(main.created_by)) {
+      for (const c of main.created_by) {
+        if (c.name && !directorsToAdd.some(x => x.name === c.name)) {
+          directorsToAdd.push({ name: c.name, profile_path: c.profile_path || null, id: c.id });
+        }
+      }
+    }
+    if (directorsToAdd.length === 0 && credRes.ok && credRes.data?.crew) {
+      const dirCrew = credRes.data.crew.filter(c => c.job === 'Director');
+      for (const d of dirCrew) {
+        if (d.name && !directorsToAdd.some(x => x.name === d.name)) {
+          directorsToAdd.push({ name: d.name, profile_path: d.profile_path || null, id: d.id });
+        }
+      }
+    }
+  }
+
+  for (const d of directorsToAdd) {
+    await db.execute(
+      'INSERT INTO director (name, profile_path, tmdb_director_id) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE profile_path = COALESCE(VALUES(profile_path), profile_path), tmdb_director_id = COALESCE(VALUES(tmdb_director_id), tmdb_director_id)',
+      [d.name, d.profile_path || null, d.id]
+    );
+    const [[dRow]] = await db.execute('SELECT director_id FROM director WHERE name = ?', [d.name]);
+    if (dRow) {
+      await db.execute('INSERT IGNORE INTO content_director (content_id, director_id) VALUES (?, ?)', [content_id, dRow.director_id]);
+    }
+  }
+  if (directorsToAdd.length > 0) stats.directors++;
+
   // 5. Watch Providers
   if (provRes.ok && provRes.data?.results) {
     const region = provRes.data.results.IN || provRes.data.results.US || {};
@@ -238,6 +289,84 @@ async function processSingleItem(db, row, stats) {
   }
 }
 
+async function processCreditsItem(db, row, stats) {
+  const { content_id, tmdb_id, type } = row;
+  const ep = type === 'Series' ? 'tv' : 'movie';
+
+  const calls = [fetchTMDB(`/${ep}/${tmdb_id}/credits`)];
+  if (type === 'Series') {
+    calls.push(fetchTMDB(`/${ep}/${tmdb_id}`));
+  }
+
+  const results = await Promise.all(calls);
+  const credRes = results[0];
+  const mainRes = type === 'Series' ? results[1] : null;
+
+  if (!credRes.ok && (!mainRes || !mainRes.ok)) {
+    stats.errors++;
+    return;
+  }
+
+  // 1. Actors (if title has no actors or missing cast)
+  if (credRes.ok && credRes.data?.cast) {
+    const cast = credRes.data.cast.slice(0, 12);
+    for (const a of cast) {
+      if (!a.name) continue;
+      await db.execute(
+        'INSERT INTO actor (name, profile_path, tmdb_actor_id) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE profile_path = COALESCE(VALUES(profile_path), profile_path), tmdb_actor_id = COALESCE(VALUES(tmdb_actor_id), tmdb_actor_id)',
+        [a.name, a.profile_path || null, a.id]
+      );
+      const [[aRow]] = await db.execute('SELECT actor_id FROM actor WHERE name = ?', [a.name]);
+      if (aRow) {
+        const role = a.character || null;
+        await db.execute('INSERT IGNORE INTO content_actor (content_id, actor_id, role_name) VALUES (?, ?, ?)', [content_id, aRow.actor_id, role]);
+      }
+    }
+    if (cast.length > 0) stats.actors = (stats.actors || 0) + 1;
+  }
+
+  // 2. Directors / Creators
+  const directorsToAdd = [];
+  if (type === 'Movie') {
+    if (credRes.ok && credRes.data?.crew) {
+      const dirCrew = credRes.data.crew.filter(c => c.job === 'Director');
+      for (const d of dirCrew) {
+        if (d.name && !directorsToAdd.some(x => x.name === d.name)) {
+          directorsToAdd.push({ name: d.name, profile_path: d.profile_path || null, id: d.id });
+        }
+      }
+    }
+  } else if (type === 'Series') {
+    if (mainRes && mainRes.ok && mainRes.data?.created_by && Array.isArray(mainRes.data.created_by)) {
+      for (const c of mainRes.data.created_by) {
+        if (c.name && !directorsToAdd.some(x => x.name === c.name)) {
+          directorsToAdd.push({ name: c.name, profile_path: c.profile_path || null, id: c.id });
+        }
+      }
+    }
+    if (directorsToAdd.length === 0 && credRes.ok && credRes.data?.crew) {
+      const dirCrew = credRes.data.crew.filter(c => c.job === 'Director');
+      for (const d of dirCrew) {
+        if (d.name && !directorsToAdd.some(x => x.name === d.name)) {
+          directorsToAdd.push({ name: d.name, profile_path: d.profile_path || null, id: d.id });
+        }
+      }
+    }
+  }
+
+  for (const d of directorsToAdd) {
+    await db.execute(
+      'INSERT INTO director (name, profile_path, tmdb_director_id) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE profile_path = COALESCE(VALUES(profile_path), profile_path), tmdb_director_id = COALESCE(VALUES(tmdb_director_id), tmdb_director_id)',
+      [d.name, d.profile_path || null, d.id]
+    );
+    const [[dRow]] = await db.execute('SELECT director_id FROM director WHERE name = ?', [d.name]);
+    if (dRow) {
+      await db.execute('INSERT IGNORE INTO content_director (content_id, director_id) VALUES (?, ?)', [content_id, dRow.director_id]);
+    }
+  }
+  if (directorsToAdd.length > 0) stats.directors = (stats.directors || 0) + 1;
+}
+
 async function main() {
   console.log(C.bold('\n🎬 ==================================================='));
   console.log(C.bold('   CINEVERSE MASTER DATABASE BACKFILL & ENRICHMENT'));
@@ -247,48 +376,69 @@ async function main() {
     host: '127.0.0.1',
     port: 3306,
     user: 'project_user',
-    password: 'Sankhu@2006',
+    password: process.env.DB_PASSWORD || '',
     database: 'project',
   });
   console.log(C.green('✓ Connected to MySQL database\n'));
 
-  // STEP 0: Clean up junk data & season 0
-  console.log(C.cyan('STEP 0: Cleaning up junk test data & normalizing...'));
-  await db.execute("DELETE FROM content WHERE title IN ('Test Movie', 'Demo Series')");
-  // Clean up season 0 episodes and season 0
-  const [s0Rows] = await db.execute('SELECT season_id FROM season WHERE season_number = 0');
-  if (s0Rows.length > 0) {
-    const s0Ids = s0Rows.map(r => r.season_id);
-    await db.execute(`DELETE FROM episode WHERE season_id IN (${s0Ids.join(',')})`);
-    await db.execute('DELETE FROM season WHERE season_number = 0');
-    console.log(C.green(`  Removed ${s0Rows.length} Season 0 records`));
-  }
-  console.log(C.green('  Clean up completed.\n'));
+  const isCreditsOnly = process.argv.includes('--credits-only') || process.argv.includes('--directors-only');
+  const limitArgIdx = process.argv.indexOf('--limit');
+  const limitVal = limitArgIdx !== -1 && process.argv[limitArgIdx + 1] ? parseInt(process.argv[limitArgIdx + 1], 10) : null;
+  const activeConcurrency = isCreditsOnly ? 8 : CONCURRENCY;
 
-  // STEP 1: Merge existing duplicate genres
-  console.log(C.cyan('STEP 1: Merging duplicate genres...'));
-  const genreMerges = [
-    ['Science Fiction', 'Sci-Fi & Fantasy'],
-    ['Action & Adventure', 'Action'],
-  ];
-  for (const [from, to] of genreMerges) {
-    const [[toR]] = await db.execute('SELECT genre_id FROM genre WHERE genre_name = ?', [to]);
-    const [[fromR]] = await db.execute('SELECT genre_id FROM genre WHERE genre_name = ?', [from]);
-    if (toR && fromR) {
-      await db.execute('UPDATE IGNORE content_genre SET genre_id = ? WHERE genre_id = ?', [toR.genre_id, fromR.genre_id]);
-      await db.execute('DELETE FROM content_genre WHERE genre_id = ?', [fromR.genre_id]);
-      await db.execute('DELETE FROM genre WHERE genre_id = ?', [fromR.genre_id]);
-      console.log(C.green(`  Merged genre "${from}" -> "${to}"`));
+  if (!isCreditsOnly) {
+    // STEP 0: Clean up junk data & season 0
+    console.log(C.cyan('STEP 0: Cleaning up junk test data & normalizing...'));
+    await db.execute("DELETE FROM content WHERE title IN ('Test Movie', 'Demo Series')");
+    // Clean up season 0 episodes and season 0
+    const [s0Rows] = await db.execute('SELECT season_id FROM season WHERE season_number = 0');
+    if (s0Rows.length > 0) {
+      const s0Ids = s0Rows.map(r => r.season_id);
+      await db.execute(`DELETE FROM episode WHERE season_id IN (${s0Ids.join(',')})`);
+      await db.execute('DELETE FROM season WHERE season_number = 0');
+      console.log(C.green(`  Removed ${s0Rows.length} Season 0 records`));
     }
+    console.log(C.green('  Clean up completed.\n'));
+
+    // STEP 1: Merge existing duplicate genres
+    console.log(C.cyan('STEP 1: Merging duplicate genres...'));
+    const genreMerges = [
+      ['Science Fiction', 'Sci-Fi & Fantasy'],
+      ['Action & Adventure', 'Action'],
+    ];
+    for (const [from, to] of genreMerges) {
+      const [[toR]] = await db.execute('SELECT genre_id FROM genre WHERE genre_name = ?', [to]);
+      const [[fromR]] = await db.execute('SELECT genre_id FROM genre WHERE genre_name = ?', [from]);
+      if (toR && fromR) {
+        await db.execute('UPDATE IGNORE content_genre SET genre_id = ? WHERE genre_id = ?', [toR.genre_id, fromR.genre_id]);
+        await db.execute('DELETE FROM content_genre WHERE genre_id = ?', [fromR.genre_id]);
+        await db.execute('DELETE FROM genre WHERE genre_id = ?', [fromR.genre_id]);
+        console.log(C.green(`  Merged genre "${from}" -> "${to}"`));
+      }
+    }
+    console.log();
   }
-  console.log();
 
   // STEP 2: Query content rows
-  const [rows] = await db.execute(
-    'SELECT content_id, tmdb_id, type, title FROM content WHERE tmdb_id IS NOT NULL AND tmdb_id NOT IN (999999, 888888) ORDER BY content_id'
-  );
+  let rowsQuery = 'SELECT content_id, tmdb_id, type, title FROM content WHERE tmdb_id IS NOT NULL AND tmdb_id NOT IN (999999, 888888)';
+  if (isCreditsOnly) {
+    // Prioritize key titles, titles that already have actors, and top titles
+    rowsQuery += ` ORDER BY 
+      (title IN ('Sleepless in Seattle', 'Interstellar', 'Inception', 'The Dark Knight', 'The Dark Knight Rises', 'Batman Begins', 'Memento', 'The Prestige', 'Oppenheimer', 'Tenet', 'Dunkirk', 'Catch Me If You Can', 'Jurassic Park', 'Saving Private Ryan', 'Schindler\\'s List', 'The Matrix', 'Fight Club', 'Toy Story', 'Forrest Gump', 'The Green Mile', 'The Boys', 'Euphoria', 'Dune: Part Two')) DESC,
+      (content_id IN (SELECT DISTINCT content_id FROM content_actor)) DESC,
+      (rating IS NOT NULL AND rating > 0) DESC,
+      rating DESC,
+      release_year DESC`;
+  } else {
+    rowsQuery += ' ORDER BY content_id';
+  }
+  if (limitVal) {
+    rowsQuery += ` LIMIT ${limitVal}`;
+  }
+
+  const [rows] = await db.execute(rowsQuery);
   const total = rows.length;
-  console.log(C.cyan(`STEP 2: Backfilling data for ${total} titles from TMDB (Concurrency: ${CONCURRENCY})...\n`));
+  console.log(C.cyan(`STEP 2: ${isCreditsOnly ? 'Enriching Credits & Directors' : 'Backfilling data'} for ${total} titles from TMDB (Concurrency: ${activeConcurrency})...\n`));
 
   const stats = {
     genres: 0,
@@ -297,6 +447,7 @@ async function main() {
     backdrops: 0,
     trailers: 0,
     actors: 0,
+    directors: 0,
     platforms: 0,
     seasons: 0,
     episodes: 0,
@@ -306,9 +457,13 @@ async function main() {
   let completed = 0;
   const startTime = Date.now();
 
-  for (let i = 0; i < total; i += CONCURRENCY) {
-    const batch = rows.slice(i, i + CONCURRENCY);
-    await Promise.all(batch.map(r => processSingleItem(db, r, stats)));
+  for (let i = 0; i < total; i += activeConcurrency) {
+    const batch = rows.slice(i, i + activeConcurrency);
+    if (isCreditsOnly) {
+      await Promise.all(batch.map(r => processCreditsItem(db, r, stats)));
+    } else {
+      await Promise.all(batch.map(r => processSingleItem(db, r, stats)));
+    }
     completed += batch.length;
 
     const pct = Math.round((completed / total) * 100);
@@ -321,7 +476,8 @@ async function main() {
 
   process.stdout.write('\n\n');
 
-  // STEP 3: Merge duplicate platforms
+  if (!isCreditsOnly) {
+    // STEP 3: Merge duplicate platforms
   console.log(C.cyan('STEP 3: Merging duplicate streaming platforms...'));
   const platMerges = [
     ['Amazon Prime Video', ['Amazon Prime', 'Amazon Prime Video with Ads', 'Amazon Video']],
@@ -344,6 +500,7 @@ async function main() {
       console.log(C.green(`  Merged platform "${v}" -> "${canonical}"`));
     }
   }
+}
 
   // FINAL STATS
   const [[{ totContent }]] = await db.execute('SELECT COUNT(*) as totContent FROM content');
@@ -354,6 +511,12 @@ async function main() {
   const [[{ withP }]] = await db.execute('SELECT COUNT(DISTINCT content_id) as withP FROM content_platform');
   const [[{ totAct }]] = await db.execute('SELECT COUNT(*) as totAct FROM actor');
   const [[{ actPic }]] = await db.execute("SELECT COUNT(*) as actPic FROM actor WHERE profile_path IS NOT NULL AND profile_path != ''");
+  const [[{ withA }]] = await db.execute('SELECT COUNT(DISTINCT content_id) as withA FROM content_actor');
+  const [[{ totActRel }]] = await db.execute('SELECT COUNT(*) as totActRel FROM content_actor');
+  const [[{ totDir }]] = await db.execute('SELECT COUNT(*) as totDir FROM director');
+  const [[{ withD }]] = await db.execute('SELECT COUNT(DISTINCT content_id) as withD FROM content_director');
+  const [[{ totDirRel }]] = await db.execute('SELECT COUNT(*) as totDirRel FROM content_director');
+  const [[{ orphanDirRel }]] = await db.execute('SELECT COUNT(*) as orphanDirRel FROM content_director cd LEFT JOIN content c ON cd.content_id = c.content_id LEFT JOIN director d ON cd.director_id = d.director_id WHERE c.content_id IS NULL OR d.director_id IS NULL');
   const [[{ totS }]] = await db.execute('SELECT COUNT(DISTINCT series_id) as totS FROM season');
   const [[{ totE }]] = await db.execute('SELECT COUNT(*) as totE FROM episode');
   const [[{ zeroR }]] = await db.execute('SELECT COUNT(*) as zeroR FROM content WHERE rating = 0');
@@ -367,7 +530,12 @@ async function main() {
   console.log(`  Titles with Backdrop:      ${C.bold(withB + '/' + totContent)} (${Math.round((withB/totContent)*100)}%)`);
   console.log(`  Titles with Trailer:       ${C.bold(withT + '/' + totContent)} (${Math.round((withT/totContent)*100)}%)`);
   console.log(`  Titles with OTT Platform:  ${C.bold(withP + '/' + totContent)} (${Math.round((withP/totContent)*100)}%)`);
+  console.log(`  Titles with Actors:        ${C.bold(withA + '/' + totContent)} (${Math.round((withA/totContent)*100)}%)`);
+  console.log(`  Total Actors in Catalog:   ${C.bold(totAct)} (Links: ${totActRel})`);
   console.log(`  Actors with Photos:        ${C.bold(actPic + '/' + totAct)} (${Math.round((actPic/totAct)*100)}%)`);
+  console.log(`  Titles with Directors:     ${C.bold(withD + '/' + totContent)} (${Math.round((withD/totContent)*100)}%)`);
+  console.log(`  Total Directors in Catalog:${C.bold(totDir)} (Links: ${totDirRel})`);
+  console.log(`  Orphan Director Links:     ${C.bold(orphanDirRel)}`);
   console.log(`  TV Series with Seasons:    ${C.bold(totS)}`);
   console.log(`  Total Episodes:            ${C.bold(totE)}`);
   console.log(`  Zero Rating Items:         ${C.bold(zeroR)}`);

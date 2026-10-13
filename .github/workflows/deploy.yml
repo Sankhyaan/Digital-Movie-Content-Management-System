@@ -19,24 +19,41 @@ jobs:
           username: ubuntu
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
+            set -euo pipefail
+
+            echo "=== Starting CineVerse Deployment ==="
+
             # Navigate to CineVerse directory on EC2
-            cd ~/cineverse || cd /var/www/cineverse
-            
-            # Pull latest changes from main branch in seconds
+            if [ -d "$HOME/cineverse" ]; then
+              cd "$HOME/cineverse"
+            elif [ -d "/var/www/cineverse" ]; then
+              cd "/var/www/cineverse"
+            else
+              echo "Error: CineVerse directory not found!"
+              exit 1
+            fi
+
+            # Pull latest changes from main branch
             git pull origin main
-            
-            # Rebuild and restart backend with zero downtime
+            DEPLOYED_COMMIT=$(git rev-parse HEAD)
+            echo "Deploying Git Commit: ${DEPLOYED_COMMIT}"
+
+            # Rebuild backend; failure halts execution before pm2 restart
+            echo "Building backend..."
             cd backend
             npm install --production=false
             npm run build
             pm2 restart cineverse-backend || pm2 start dist/server.js --name "cineverse-backend"
-            
+
             # Rebuild frontend production bundle
+            echo "Building frontend..."
             cd ../frontend
             npm install
             npm run build
-            
+
             # Reload Nginx if configured
-            sudo systemctl reload nginx || true
-            
-            echo "🚀 CineVerse deployment completed successfully!"
+            if command -v systemctl >/dev/null 2>&1; then
+              sudo systemctl reload nginx || true
+            fi
+
+            echo "🚀 CineVerse deployment completed successfully! Deployed commit: ${DEPLOYED_COMMIT}"

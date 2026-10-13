@@ -20,6 +20,8 @@ export function createMovieRoutes(controller: MovieController): Router {
   router.get('/genres', controller.getGenres);
   router.get('/search', controller.searchMovies);
   router.get('/recommend', controller.getRecommendations);
+  router.post('/recommend', controller.getRecommendationsByProfile);
+  router.post('/profile', controller.buildPreferenceProfile);
 
   // Parameterized routes
   router.get('/:id', controller.getMovieById);

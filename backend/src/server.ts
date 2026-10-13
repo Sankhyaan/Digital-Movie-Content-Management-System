@@ -36,6 +36,15 @@ async function bootstrap() {
     console.log(`   GET  /api/movies/:id          - Movie details`);
     console.log(`   GET  /api/health              - Health check\n`);
   });
+
+  // 4. Pre-warm recommendation engine and person catalog (load binary embeddings & cache)
+  import('./services/recommendation/recommendationEngine')
+    .then(({ RecommendationEngine }) => RecommendationEngine.getInstance().init())
+    .catch((err) => console.warn('[Bootstrap] Recommendation engine lazy load enabled:', err.message));
+
+  import('./services/customPromptParser')
+    .then(({ initPersonCatalogFromDatabase }) => initPersonCatalogFromDatabase())
+    .catch((err) => console.warn('[Bootstrap] Person catalog lazy load enabled:', err.message));
 }
 
 bootstrap().catch((err) => {

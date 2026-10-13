@@ -94,10 +94,18 @@ export function setCachedData<T>(key: string, data: T, ttl = CACHE_TTL): void {
 
 // ── API methods (all hit your Express backend → your MySQL database) ───────────
 
-export async function fetchMovies(filters: MovieFilters = {}, forceFresh = false): Promise<Movie[]> {
-  const cacheKey = 'movies_' + JSON.stringify(filters);
+export interface FetchMoviesResult {
+  movies: Movie[];
+  total: number;
+}
+
+export async function fetchMoviesWithCount(
+  filters: MovieFilters = {},
+  forceFresh = false
+): Promise<FetchMoviesResult> {
+  const cacheKey = 'movies_cnt_' + JSON.stringify(filters);
   if (!forceFresh) {
-    const cached = getCachedData<Movie[]>(cacheKey);
+    const cached = getCachedData<FetchMoviesResult>(cacheKey);
     if (cached) return cached;
   }
 
@@ -111,18 +119,23 @@ export async function fetchMovies(filters: MovieFilters = {}, forceFresh = false
   if (filters.offset)   params.offset   = String(filters.offset);
 
   const { data } = await api.get('/movies', { params });
-  setCachedData(cacheKey, data.data);
-  return data.data;
+  const result: FetchMoviesResult = {
+    movies: data.data || [],
+    total: data.total ?? data.count ?? (data.data || []).length,
+  };
+  setCachedData(cacheKey, result);
+  return result;
 }
 
-export async function fetchFeaturedMovies(forceFresh = false): Promise<Movie[]> {
-  const cacheKey = 'movies_featured';
-  if (!forceFresh) {
-    const cached = getCachedData<Movie[]>(cacheKey);
-    if (cached) return cached;
-  }
-  const { data } = await api.get('/movies/featured');
-  setCachedData(cacheKey, data.data);
+export async function fetchMovies(filters: MovieFilters = {}, forceFresh = false): Promise<Movie[]> {
+  const res = await fetchMoviesWithCount(filters, forceFresh);
+  return res.movies;
+}
+
+export async function fetchFeaturedMovies(_forceFresh = true): Promise<Movie[]> {
+  const { data } = await api.get('/movies/featured', {
+    params: { _t: Date.now() },
+  });
   return data.data;
 }
 
@@ -239,3 +252,152 @@ export interface MovieDetail extends Movie {
   actors?: Actor[];
   seasons?: Season[];
 }
+
+// ── Common User Preference Profile ───────────────────────────────────────────
+export interface UserPreferenceProfile {
+  source: 'guided' | 'custom';
+  experience: string[];
+  type: 'Movie' | 'Series' | null;
+  genres: string[];
+  languages: string[];
+  platforms: string[];
+  runtime_preference:
+    | 'under_2_hours'
+    | 'around_2_hours'
+    | 'long_movie_ok'
+    | 'binge_series'
+    | 'no_preference'
+    | null;
+  runtime_relation:
+    | 'shorter_than_reference'
+    | 'longer_than_reference'
+    | null;
+  era_preference:
+    | 'recent'
+    | 'modern'
+    | 'classic'
+    | 'any'
+    | null;
+  quality_preference:
+    | 'high'
+    | 'medium'
+    | 'low'
+    | null;
+  themes: string[];
+  reference_titles: string[];
+  free_text: string | null;
+
+  // Quality Tuning Phase 2 Extensions:
+  negative_themes: string[];
+  negative_genres: string[];
+  negative_keywords: string[];
+
+  // Exact runtime constraints:
+  max_runtime_minutes: number | null;
+  min_runtime_minutes: number | null;
+  runtime_is_hard_constraint: boolean;
+
+  // Exact release year ranges:
+  min_release_year: number | null;
+  max_release_year: number | null;
+  year_range_is_hard: boolean;
+
+  // Actor & Director Support
+  actors: string[];
+  directors: string[];
+  actor_match_mode?: 'all' | 'any';
+
+  // Negative Entity Fields (Phase 1 Extensions)
+  negative_titles: string[];
+  negative_persons: string[];
+  negative_franchises: string[];
+
+  // Unresolved Entity Diagnostics (Phase 1 Extensions)
+  unresolved_references: string[];
+  unresolved_persons: string[];
+
+  // Diagnostic flags
+  is_degraded?: boolean;
+  low_confidence?: boolean;
+}
+
+export async function buildPreferenceProfile(
+  payload: { source: 'guided'; answers: any } | { source: 'custom'; prompt: string }
+): Promise<{ profile: UserPreferenceProfile; validation: { valid: boolean; errors: string[] } }> {
+  const res = await api.post('/movies/profile', payload);
+  return res.data;
+}
+
+// ── Hybrid Recommendation Engine Response Types ────────────────────────────
+
+export interface ReferenceAffinityBreakdown {
+  reference_title: string;
+  semantic_similarity: number;
+  genre_affinity: number;
+  format_alignment: number;
+  combined_affinity: number;
+}
+
+export interface ScoreBreakdown {
+  semantic: number;
+  experience: number;
+  genre: number;
+  reference: number;
+  runtime: number;
+  era: number;
+  quality: number;
+  language: number;
+  platform: number;
+  negative_penalty?: number;
+  negative_match?: number;
+  reference_details?: ReferenceAffinityBreakdown;
+}
+
+export interface RecommendationResult {
+  content_id: number;
+  title: string;
+  type: 'Movie' | 'Series';
+  poster_path: string | null;
+  rating: number | null;
+  release_year: number | null;
+  genres?: string[];
+  recommendation_score: number;
+  match_percentage: number;
+  score_breakdown: ScoreBreakdown;
+  reference_details?: ReferenceAffinityBreakdown;
+  match_reasons: string[];
+}
+
+export interface RecommendationDebugInfo {
+  candidate_pool_size: number;
+  top_candidates?: Array<{
+    content_id: number;
+    title: string;
+    hybrid_score: number;
+  }>;
+  active_weights: Record<string, number>;
+  execution_time_ms: {
+    query_embedding_ms: number;
+    candidate_retrieval_ms: number;
+    feature_scoring_ms: number;
+    total_ms: number;
+  };
+}
+
+export interface RecommendationResponse {
+  success: boolean;
+  count: number;
+  recommendations: RecommendationResult[];
+  clarification_needed?: boolean;
+  message?: string;
+  debug?: RecommendationDebugInfo;
+}
+
+export async function getRecommendations(
+  profile: UserPreferenceProfile,
+  debug = false
+): Promise<RecommendationResponse> {
+  const { data } = await api.post('/movies/recommend', { profile, debug });
+  return data;
+}
+

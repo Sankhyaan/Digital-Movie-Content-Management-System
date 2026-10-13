@@ -32,7 +32,24 @@ export function createApp(repository: IMovieRepository): Application {
 
   // ── Health Check ───────────────────────────────────────────────────────
   app.get('/api/health', (_req, res) => {
-    res.json({ status: 'OK', timestamp: new Date().toISOString() });
+    let gitCommit = process.env.GIT_COMMIT || 'unknown';
+    if (gitCommit === 'unknown') {
+      try {
+        const { execSync } = require('child_process');
+        gitCommit = execSync('git rev-parse HEAD', { encoding: 'utf8', timeout: 1000 }).trim();
+      } catch {
+        gitCommit = 'local-dev';
+      }
+    }
+
+    res.json({
+      status: 'OK',
+      timestamp: new Date().toISOString(),
+      version: '1.0.0',
+      commit: gitCommit,
+      uptime: Math.floor(process.uptime()),
+      environment: process.env.NODE_ENV || 'development',
+    });
   });
 
   return app;

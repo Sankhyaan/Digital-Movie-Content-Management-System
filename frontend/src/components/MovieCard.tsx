@@ -1,78 +1,113 @@
+import React from 'react';
 import { Link } from 'react-router-dom';
 import { useWatchlist } from '../context/WatchlistContext';
 import { posterUrl } from '../api/movieApi';
 import type { Movie } from '../api/movieApi';
+import { IconBookmark, IconBookmarkFilled, IconStar, IconPlay } from './Icons';
 
 interface MovieCardProps {
   movie: Movie;
   index?: number;
 }
 
-export default function MovieCard({ movie, index = 0 }: MovieCardProps) {
+const MovieCard = React.memo(function MovieCard({ movie, index = 0 }: MovieCardProps) {
   const { isInWatchlist, addToWatchlist, removeFromWatchlist } = useWatchlist();
   const inWatchlist = isInWatchlist(movie.contentId);
 
   const toggle = (e: React.MouseEvent) => {
-    e.preventDefault(); e.stopPropagation();
+    e.preventDefault();
+    e.stopPropagation();
     inWatchlist ? removeFromWatchlist(movie.contentId) : addToWatchlist(movie);
   };
 
-  const src    = posterUrl(movie.posterPath, movie.title);
+  const src = posterUrl(movie.posterPath, movie.title);
   const rating = movie.rating != null ? Number(movie.rating).toFixed(1) : null;
-  const year   = movie.releaseYear ?? '';
-  const genre  = movie.genres?.[0] ?? '';
+  const year = movie.releaseYear ?? '';
+  const genre = movie.genres?.[0] ?? '';
 
-  // suppress unused-variable lint for `index` — it's kept for future animation ordering
   void index;
 
   return (
-    <Link to={`/movie/${movie.contentId}`} id={`movie-card-${movie.contentId}`}
-      style={{ display: 'block', textDecoration: 'none', color: 'inherit' }}>
-      {/* Poster */}
-      <div style={{
-        position: 'relative', borderRadius: '10px', overflow: 'hidden',
-        aspectRatio: '2 / 3', background: '#0d140d',
-        boxShadow: '0 4px 24px rgba(0,0,0,0.55)',
-        transition: 'transform 0.28s cubic-bezier(0.4,0,0.2,1), box-shadow 0.28s',
-        border: '1px solid rgba(16,185,129,0.08)',
-      }}
-        onMouseEnter={(e) => { e.currentTarget.style.transform = 'scale(1.055) translateY(-8px)'; e.currentTarget.style.boxShadow = '0 16px 48px rgba(16,185,129,0.28)'; e.currentTarget.style.borderColor = 'rgba(16,185,129,0.35)'; }}
-        onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1) translateY(0)'; e.currentTarget.style.boxShadow = '0 4px 24px rgba(0,0,0,0.55)'; e.currentTarget.style.borderColor = 'rgba(16,185,129,0.08)'; }}
-      >
-        <img src={src} alt={movie.title} loading="lazy"
-          style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
-          onError={(e) => { (e.target as HTMLImageElement).src = `https://placehold.co/300x450/060609/10b981?text=${encodeURIComponent(movie.title)}`; }}
-        />
-        {/* Bottom gradient */}
-        <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, rgba(6,6,9,0.92) 0%, rgba(6,6,9,0.08) 45%, transparent 100%)', pointerEvents: 'none' }} />
-        {/* Type icon */}
-        <div style={{ position: 'absolute', top: '8px', left: '8px', fontSize: '0.85rem' }}>{movie.type === 'Series' ? '📺' : '🎬'}</div>
-        {/* Rating */}
-        {rating && <div className="rating-badge" style={{ position: 'absolute', bottom: '8px', left: '8px', fontSize: '0.7rem', padding: '2px 7px' }}>★ {rating}</div>}
-        {/* Watchlist */}
-        <button onClick={toggle}
-          style={{
-            position: 'absolute', top: '8px', right: '8px', width: '28px', height: '28px', borderRadius: '50%',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            background: inWatchlist ? 'var(--accent-primary)' : 'rgba(0,0,0,0.6)',
-            border: `1px solid ${inWatchlist ? 'var(--accent-primary)' : 'rgba(16,185,129,0.25)'}`,
-            color: '#fff', cursor: 'pointer', fontSize: '0.78rem', backdropFilter: 'blur(8px)',
-            transition: 'background 0.18s',
+    <Link
+      to={`/movie/${movie.contentId}`}
+      id={`movie-card-${movie.contentId}`}
+      className="group block text-decoration-none select-none"
+    >
+      <div className="relative aspect-[2/3] w-full rounded-2xl overflow-hidden bg-[#0a0e17] border border-white/[0.07] group-hover:border-sky-500/50 group-hover:shadow-2xl group-hover:shadow-sky-500/15 group-hover:-translate-y-1.5 transition-all duration-300 ease-out">
+        <img
+          src={src}
+          alt={movie.title}
+          loading="lazy"
+          className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+          onError={(e) => {
+            (e.target as HTMLImageElement).src = `https://placehold.co/300x450/06080e/0ea5e9?text=${encodeURIComponent(
+              movie.title
+            )}`;
           }}
-          onMouseEnter={(e) => { if (!inWatchlist) e.currentTarget.style.background = 'rgba(16,185,129,0.3)'; }}
-          onMouseLeave={(e) => { if (!inWatchlist) e.currentTarget.style.background = 'rgba(0,0,0,0.6)'; }}
-        >{inWatchlist ? '✓' : '+'}</button>
+        />
+
+        <div className="absolute inset-0 bg-gradient-to-t from-[#06080e] via-transparent to-black/20 pointer-events-none" />
+
+        {/* Top Badges */}
+        <div className="absolute top-2.5 inset-x-2.5 flex items-center justify-between z-10">
+          <span className="px-2 py-0.5 rounded-md bg-black/60 backdrop-blur-md border border-white/10 text-[0.68rem] font-semibold text-neutral-300">
+            {movie.type === 'Series' ? 'TV' : '4K'}
+          </span>
+
+          <button
+            onClick={toggle}
+            className={`w-7 h-7 rounded-full flex items-center justify-center backdrop-blur-md border transition-all ${
+              inWatchlist
+                ? 'bg-sky-500 border-sky-400 text-white shadow-md shadow-sky-500/30'
+                : 'bg-black/50 border-white/15 text-neutral-300 hover:text-sky-300 hover:border-sky-400/50'
+            }`}
+            title={inWatchlist ? 'Remove from Watchlist' : 'Add to Watchlist'}
+            aria-label="Toggle Watchlist"
+          >
+            {inWatchlist ? <IconBookmarkFilled size={13} /> : <IconBookmark size={13} />}
+          </button>
+        </div>
+
+        {/* Hover Play Button */}
+        <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
+          <div className="w-11 h-11 rounded-full bg-gradient-to-tr from-cyan-400 to-blue-600 text-white flex items-center justify-center shadow-lg shadow-sky-500/40 transform scale-75 group-hover:scale-100 transition-transform">
+            <IconPlay size={18} className="ml-0.5" />
+          </div>
+        </div>
+
+        {/* Bottom Rating */}
+        {rating && (
+          <div className="absolute bottom-2.5 left-2.5 z-10 inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-black/70 backdrop-blur-md border border-amber-500/30 text-amber-400 text-[0.72rem] font-bold">
+            <IconStar size={11} className="text-amber-400" />
+            <span>{rating}</span>
+          </div>
+        )}
       </div>
-      {/* Title + meta */}
-      <div style={{ marginTop: '12px', padding: '0 2px' }}>
-        <p style={{ fontSize: '0.84rem', fontWeight: 600, color: '#f0fdf4', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', marginBottom: '4px', lineHeight: 1.3 }}>
+
+      <div
+        className="px-1"
+        style={{
+          marginTop: '14px',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '6px',
+        }}
+      >
+        <h4 className="font-outfit font-bold text-sm text-neutral-200 group-hover:text-sky-300 transition-colors truncate">
           {movie.title}
-        </p>
-        <p style={{ fontSize: '0.73rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '5px' }}>
-          <span>{year}</span>
-          {genre && <><span style={{ color: 'rgba(16,185,129,0.45)' }}>·</span><span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{genre}</span></>}
-        </p>
+        </h4>
+        <div className="flex items-center gap-1.5 text-[0.74rem] text-neutral-400 font-medium truncate">
+          {year && <span>{year}</span>}
+          {genre && (
+            <>
+              <span className="text-neutral-600">•</span>
+              <span className="truncate">{genre}</span>
+            </>
+          )}
+        </div>
       </div>
     </Link>
   );
-}
+});
+
+export default MovieCard;

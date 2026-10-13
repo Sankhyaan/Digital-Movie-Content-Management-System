@@ -12,6 +12,9 @@ export interface IMovieRepository {
   /** Get all content, optionally filtered. */
   getAll(filters?: ContentFilters): Promise<Content[]>;
 
+  /** Count total matching content items. */
+  count(filters?: ContentFilters): Promise<number>;
+
   /** Get a single content item by its content_id. Returns null if not found. */
   getById(id: string): Promise<Content | null>;
 

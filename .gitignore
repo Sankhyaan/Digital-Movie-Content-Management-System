@@ -7,3 +7,24 @@ build/
 *.log
 .DS_Store
 Thumbs.db
+
+# Large generated binary datasets and embeddings (runtime generated/downloaded)
+data/
+backend/data/
+
+# Audit logs, scratch files, and evaluation outputs
+audit/
+backend/labeled_*.json
+backend/phase*.json
+backend/quality_evaluation_data.json
+backend/top10_eval_results.txt
+backend/audit_output.txt
+backend/audit_*.js
+backend/inspect_*.js
+backend/check_*.js
+backend/scratch_*.js
+backend/final_validation.js
+backend/apply_data_fixes.js
+backend/inventory_coverage.js
+backend/test_dna_aggregation.js
+backend/test_preference_profiles.js
