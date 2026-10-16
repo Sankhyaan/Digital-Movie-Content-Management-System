@@ -63,6 +63,11 @@ export default function CategoryRow({
           <h2 className="font-outfit font-extrabold text-xl md:text-2xl text-white tracking-tight">
             {title}
           </h2>
+          {movies.length > 0 && (
+            <span className="text-[0.68rem] font-bold px-2 py-0.5 rounded-full bg-white/[0.06] border border-white/[0.08] text-neutral-400">
+              {movies.length}
+            </span>
+          )}
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
@@ -80,7 +85,7 @@ export default function CategoryRow({
             <button
               type="button"
               onClick={() => scroll('left')}
-              className="w-8 h-8 rounded-full bg-white/[0.04] hover:bg-white/[0.12] border border-white/[0.08] text-neutral-400 hover:text-white flex items-center justify-center transition-all cursor-pointer"
+              className="w-8 h-8 rounded-full bg-white/[0.05] hover:bg-white/[0.12] border border-white/[0.08] hover:border-sky-500/40 text-neutral-400 hover:text-sky-300 active:scale-90 flex items-center justify-center transition-all duration-200 cursor-pointer shadow-sm hover:shadow-sky-500/20"
               aria-label={`Scroll ${title} left`}
             >
               <IconChevronLeft size={16} />
@@ -88,7 +93,7 @@ export default function CategoryRow({
             <button
               type="button"
               onClick={() => scroll('right')}
-              className="w-8 h-8 rounded-full bg-white/[0.04] hover:bg-white/[0.12] border border-white/[0.08] text-neutral-400 hover:text-white flex items-center justify-center transition-all cursor-pointer"
+              className="w-8 h-8 rounded-full bg-white/[0.05] hover:bg-white/[0.12] border border-white/[0.08] hover:border-sky-500/40 text-neutral-400 hover:text-sky-300 active:scale-90 flex items-center justify-center transition-all duration-200 cursor-pointer shadow-sm hover:shadow-sky-500/20"
               aria-label={`Scroll ${title} right`}
             >
               <IconChevronRight size={16} />
