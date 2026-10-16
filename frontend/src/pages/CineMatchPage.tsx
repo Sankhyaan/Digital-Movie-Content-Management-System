@@ -713,14 +713,14 @@ export default function CineMatchPage() {
                 value={customPrompt}
                 onChange={(e) => setCustomPrompt(e.target.value)}
                 placeholder="e.g. A fast-paced mystery thriller with unexpected plot twists..."
-                className="w-full rounded-2xl bg-black/45 border border-white/[0.12] focus:border-sky-400/80 focus:bg-[#0b1324] text-white placeholder-neutral-500 text-sm outline-none resize-none shadow-inner transition-all"
+                className="w-full rounded-2xl bg-black/45 border border-white/[0.12] focus:border-sky-400 focus:bg-[#0b1324] focus:shadow-[0_0_20px_rgba(56,189,248,0.25)] text-white placeholder-neutral-500 text-sm outline-none resize-none shadow-inner transition-all duration-200"
                 style={{ padding: '16px 18px', minHeight: '100px' }}
               />
 
               <button
                 type="submit"
                 disabled={!customPrompt.trim()}
-                className="w-full text-white font-bold text-[14px] tracking-wide transition-all duration-300 hover:scale-[1.01] hover:shadow-[0_6px_24px_rgba(0,119,230,0.6)] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full text-white font-bold text-[14px] tracking-wide transition-all duration-300 hover:scale-[1.01] hover:shadow-[0_6px_24px_rgba(0,119,230,0.6)] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2"
                 style={{
                   background: 'linear-gradient(180deg, #0e85f5 0%, #0066d6 55%, #0052b3 100%)',
                   boxShadow: '0 4px 18px rgba(0, 102, 224, 0.45), inset 0 1px 1.5px rgba(255, 255, 255, 0.55), inset 0 -2px 4px rgba(0, 40, 120, 0.35)',
@@ -729,7 +729,8 @@ export default function CineMatchPage() {
                   border: '1px solid rgba(56, 189, 248, 0.7)',
                 }}
               >
-                Find Matches
+                <IconSparkles size={16} className="text-sky-200" />
+                <span>Find Matches</span>
               </button>
             </form>
 
@@ -739,7 +740,7 @@ export default function CineMatchPage() {
                   key={idx}
                   type="button"
                   onClick={() => setCustomPrompt(ex)}
-                  className="rounded-xl bg-sky-500/10 hover:bg-sky-500/20 border border-sky-400/25 hover:border-sky-400/50 text-xs text-sky-200 hover:text-white transition-all cursor-pointer"
+                  className="rounded-xl bg-sky-500/10 hover:bg-sky-500/20 border border-sky-400/25 hover:border-sky-400/50 text-xs text-sky-200 hover:text-white hover:scale-[1.03] active:scale-[0.98] transition-all duration-200 cursor-pointer shadow-sm hover:shadow-sky-500/20"
                   style={{ padding: '7px 14px' }}
                 >
                   {ex}
