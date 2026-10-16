@@ -274,7 +274,7 @@ export default function HeroCarousel({ movies = [] }: HeroCarouselProps) {
         {/* Nav Controls (Previous / Next) on hover */}
         <button
           onClick={prev}
-          className="absolute left-4 top-1/2 -translate-y-1/2 z-20 w-10 h-10 rounded-full bg-black/40 hover:bg-black/75 border border-white/10 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all cursor-pointer"
+          className="absolute left-4 top-1/2 -translate-y-1/2 z-20 w-10 h-10 rounded-full bg-black/50 hover:bg-black/80 border border-white/15 text-neutral-300 hover:text-sky-300 hover:border-sky-400/50 flex items-center justify-center opacity-0 group-hover:opacity-100 hover:scale-105 active:scale-95 transition-all duration-200 cursor-pointer shadow-lg shadow-black/40"
           aria-label="Previous slide"
         >
           <IconChevronLeft size={18} />
@@ -282,11 +282,31 @@ export default function HeroCarousel({ movies = [] }: HeroCarouselProps) {
 
         <button
           onClick={next}
-          className="absolute right-4 top-1/2 -translate-y-1/2 z-20 w-10 h-10 rounded-full bg-black/40 hover:bg-black/75 border border-white/10 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all cursor-pointer"
+          className="absolute right-4 top-1/2 -translate-y-1/2 z-20 w-10 h-10 rounded-full bg-black/50 hover:bg-black/80 border border-white/15 text-neutral-300 hover:text-sky-300 hover:border-sky-400/50 flex items-center justify-center opacity-0 group-hover:opacity-100 hover:scale-105 active:scale-95 transition-all duration-200 cursor-pointer shadow-lg shadow-black/40"
           aria-label="Next slide"
         >
           <IconChevronRight size={18} />
         </button>
+
+        {/* Slide Indicators / Progress Dots */}
+        {movies.length > 1 && (
+          <div className="absolute bottom-5 right-6 md:right-10 z-20 flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-black/50 backdrop-blur-md border border-white/10 shadow-lg select-none">
+            {movies.map((m, idx) => (
+              <button
+                key={m.contentId || idx}
+                type="button"
+                onClick={() => goTo(idx)}
+                className={`transition-all duration-300 rounded-full cursor-pointer ${
+                  current === idx
+                    ? 'w-5 h-1.5 bg-gradient-to-r from-sky-400 to-blue-500 shadow-[0_0_8px_rgba(56,189,248,0.7)]'
+                    : 'w-1.5 h-1.5 bg-white/30 hover:bg-white/60 hover:scale-125'
+                }`}
+                title={`Go to slide ${idx + 1}`}
+                aria-label={`Slide ${idx + 1}`}
+              />
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Official Trailer Modal */}
