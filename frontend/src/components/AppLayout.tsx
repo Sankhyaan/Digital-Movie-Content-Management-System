@@ -65,8 +65,8 @@ export default function AppLayout({ children }: AppLayoutProps) {
             sidebarCollapsed ? 'justify-center' : 'gap-3'
           } ${
             isActive
-              ? 'bg-sky-500/15 text-sky-300 font-semibold'
-              : 'text-neutral-400 hover:text-white hover:bg-white/[0.04]'
+              ? 'bg-gradient-to-r from-sky-500/15 to-blue-600/10 text-sky-300 font-semibold border border-sky-500/20 shadow-sm shadow-sky-500/10'
+              : 'text-neutral-400 hover:text-white hover:bg-white/[0.04] border border-transparent'
           }`}
           style={{
             padding: sidebarCollapsed ? '13px 0' : '12px 14px',
@@ -75,7 +75,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
           }}
         >
           {isActive && (
-            <div className="absolute left-0 top-1.5 bottom-1.5 w-1 bg-sky-400 rounded-r shadow-[0_0_8px_rgba(56,189,248,0.5)]" />
+            <div className="absolute left-0 top-1.5 bottom-1.5 w-1 bg-gradient-to-b from-sky-400 to-blue-500 rounded-r shadow-[0_0_10px_rgba(56,189,248,0.7)]" />
           )}
 
           <div
@@ -178,7 +178,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
                 }}
                 className="flex items-center gap-3 group text-decoration-none min-w-0"
               >
-                <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-sky-400 via-sky-500 to-blue-600 flex items-center justify-center shadow-md shadow-sky-500/20 group-hover:scale-105 transition-transform duration-200 shrink-0">
+                <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-sky-400 via-sky-500 to-blue-600 flex items-center justify-center shadow-md shadow-sky-500/20 group-hover:scale-105 group-hover:shadow-sky-500/40 group-hover:shadow-lg transition-all duration-300 shrink-0">
                   <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#ffffff" strokeWidth="2.3" strokeLinecap="round" strokeLinejoin="round">
                     <rect x="2" y="7" width="20" height="15" rx="3" />
                     <polyline points="17 2 12 7 7 2" />
