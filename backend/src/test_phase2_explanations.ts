@@ -324,8 +324,8 @@ async function runPhase2Tests() {
       `Must include 'Starring Tom Holland' (got: ${JSON.stringify(reasons)})`
     );
     assert.ok(
-      reasons.includes('Excludes Spider-Man movies'),
-      `Must include 'Excludes Spider-Man movies' (got: ${JSON.stringify(reasons)})`
+      !reasons.some(r => r.startsWith('Excludes')),
+      `Must NOT include ungrounded negative claims like 'Excludes' (got: ${JSON.stringify(reasons)})`
     );
     // Must NOT claim Action genre match
     for (const r of reasons) {

@@ -185,7 +185,23 @@ export class MovieController {
         (profile.negative_persons && profile.negative_persons.length > 0) ||
         (profile.negative_franchises && profile.negative_franchises.length > 0);
 
-      if (!hasMeaningfulPreferences || profile.low_confidence) {
+      if (profile.clarification_needed) {
+        res.json({
+          success: true,
+          count: 0,
+          recommendations: [],
+          clarification_needed: true,
+          message: profile.clarification_message || "We couldn't identify clear preferences in your request. Could you provide more details?"
+        });
+        return;
+      }
+
+      const isSurprise = Boolean(
+        profile.free_text &&
+        /\b(surprise(\s+me)?|random|pick\s+for\s+me)\b/i.test(profile.free_text)
+      );
+
+      if ((!hasMeaningfulPreferences && !isSurprise) || profile.low_confidence) {
         res.json({
           success: true,
           count: 0,

@@ -14,6 +14,8 @@ export class CandidateRetriever {
   private dnaCache: MovieDNA[] = [];
   private dnaMap = new Map<number, MovieDNA>();
   private loaded = false;
+  public lastMissingDirectorCount = 0;
+  public lastMissingActorCount = 0;
 
   private constructor() {}
 
@@ -109,6 +111,9 @@ export class CandidateRetriever {
       await this.init();
     }
 
+    this.lastMissingDirectorCount = 0;
+    this.lastMissingActorCount = 0;
+
     const typeConstraint = profile.type;
     // Platform and language constraints: active when the profile specifies them (regardless of source).
     // Previously constrained to source==='custom', but guided profiles may carry these too.
@@ -198,6 +203,37 @@ export class CandidateRetriever {
         }
       }
 
+      // 4e. HARD CONSTRAINT: Explicit Negative Theme & Keyword Exclusion
+      const negativeThemesToFilter = [
+        ...(profile.negative_themes || []),
+        ...(profile.negative_keywords || [])
+      ].map(t => t.toLowerCase().trim()).filter(Boolean);
+
+      if (negativeThemesToFilter.length > 0) {
+        const candidateGenres = (item.genres || []).map((g) => g.toLowerCase());
+        const candidateDesc = (item.description || '').toLowerCase();
+        const candidateTitle = (item.title || '').toLowerCase();
+
+        const hasExcludedTheme = negativeThemesToFilter.some((term) => {
+          if (candidateGenres.some((cg) => cg === term || cg.includes(term))) {
+            return true;
+          }
+          const termEscaped = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          const termRegex = term.length <= 3
+            ? new RegExp(`\\b${termEscaped}\\b`, 'i')
+            : new RegExp(`\\b${termEscaped}`, 'i');
+
+          if (termRegex.test(candidateTitle) || termRegex.test(candidateDesc)) {
+            return true;
+          }
+          return false;
+        });
+
+        if (hasExcludedTheme) {
+          continue;
+        }
+      }
+
       // 5. HARD CONSTRAINT: Explicit Runtime Limits (e.g. "under 90 minutes", "at least 150 minutes")
       if (hasHardRuntime) {
         if (profile.max_runtime_minutes !== null && item.type === 'Movie') {
@@ -225,6 +261,7 @@ export class CandidateRetriever {
       // 7. HARD CONSTRAINT: Explicit Director requirement (e.g. "Christopher Nolan movies")
       if (profile.directors && profile.directors.length > 0) {
         if (!item.directors || item.directors.length === 0) {
+          this.lastMissingDirectorCount++;
           continue;
         }
         const matchesDirector = profile.directors.some((reqDir) =>
@@ -238,6 +275,7 @@ export class CandidateRetriever {
       // 8. HARD CONSTRAINT: Explicit Actor requirement (e.g. "movies with Karl Urban")
       if (profile.actors && profile.actors.length > 0) {
         if (!item.actors || item.actors.length === 0) {
+          this.lastMissingActorCount++;
           continue;
         }
         const mode = profile.actor_match_mode || 'all';

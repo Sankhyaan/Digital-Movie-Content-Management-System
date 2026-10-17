@@ -110,6 +110,12 @@ export function validateGeminiDeltaSchema(raw: unknown): SchemaValidationResult 
 
   const obj = raw as Record<string, any>;
 
+  // Normalize common LLM alias: content_type -> type
+  if (obj.content_type !== undefined && obj.type === undefined) {
+    obj.type = obj.content_type;
+    delete obj.content_type;
+  }
+
   // 1. Reject unexpected / unrecognized properties
   for (const key of Object.keys(obj)) {
     if (!ALLOWED_DELTA_KEYS.has(key)) {
@@ -580,7 +586,14 @@ export function mergeProfileWithLlmDelta(
 
   // 4. Merge negative genres
   if (llmDelta.negative_genres && llmDelta.negative_genres.length > 0) {
-    const negGenreSet = new Set([...merged.negative_genres, ...llmDelta.negative_genres]);
+    // LLM-added negative genres must never drop explicit user genres
+    const safeLlmNegGenres = llmDelta.negative_genres.filter((ng) => {
+      const isExplicitUserGenre =
+        deterministicProfile.genres.includes(ng) &&
+        deterministicProfile.genre_sources?.[ng] === 'user';
+      return !isExplicitUserGenre;
+    });
+    const negGenreSet = new Set([...merged.negative_genres, ...safeLlmNegGenres]);
     merged.negative_genres = Array.from(negGenreSet);
   }
 
@@ -591,7 +604,7 @@ export function mergeProfileWithLlmDelta(
 
   // 6. Contradiction check: direct contradiction between requested and excluded genres
   const hasGenreContradiction =
-    (deterministicProfile.genres && deterministicProfile.genres.some((g) => merged.negative_genres.includes(g))) ||
+    (deterministicProfile.genres && deterministicProfile.genres.some((g) => deterministicProfile.negative_genres.includes(g))) ||
     (llmDelta.genres && llmDelta.negative_genres && llmDelta.genres.some((g) => llmDelta.negative_genres?.includes(g)));
 
   // 7. Merge themes and negative themes
@@ -691,7 +704,14 @@ export function mergeProfileWithLlmDelta(
     merged.languages.length > 0 ||
     merged.platforms.length > 0;
 
-  if (hasGenreContradiction) {
+  if (deterministicProfile.clarification_needed) {
+    merged.clarification_needed = true;
+    merged.clarification_message = deterministicProfile.clarification_message;
+    merged.ambiguous_entities = deterministicProfile.ambiguous_entities;
+    merged.unresolved_persons = deterministicProfile.unresolved_persons;
+    merged.unresolved_references = deterministicProfile.unresolved_references;
+    merged.low_confidence = true;
+  } else if (hasGenreContradiction) {
     merged.low_confidence = true;
     merged.is_degraded = true;
   } else if (hasEntities) {

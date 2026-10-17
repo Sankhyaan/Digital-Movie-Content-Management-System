@@ -1,0 +1,27 @@
+# Auto-detect text files and normalize line endings to LF on commit/checkout
+* text=auto eol=lf
+
+# Explicit source code extensions
+*.ts text eol=lf
+*.tsx text eol=lf
+*.js text eol=lf
+*.jsx text eol=lf
+*.json text eol=lf
+*.css text eol=lf
+*.html text eol=lf
+*.md text eol=lf
+*.txt text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+
+# Explicit binary files (do not normalize line endings)
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.gif binary
+*.ico binary
+*.bin binary
+*.pt binary
+*.onnx binary
+*.pdf binary

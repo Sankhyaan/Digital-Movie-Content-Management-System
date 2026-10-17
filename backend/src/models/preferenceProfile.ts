@@ -94,6 +94,58 @@ export interface UserPreferenceProfile {
   // Diagnostic flags
   is_degraded?: boolean;
   low_confidence?: boolean;
+
+  // Explicit polarity item representation (Phase 1)
+  extracted_items?: ExtractedItem[];
+
+  // Entity Resolution & Disambiguation (Phase 3)
+  resolved_entities?: ResolvedEntity[];
+  ambiguous_entities?: AmbiguousEntity[];
+  clarification_needed?: boolean;
+  clarification_message?: string;
+  franchise_unverified_note?: string;
+}
+
+export interface ResolvedEntity {
+  entity_type: 'title' | 'director' | 'actor' | 'franchise';
+  matched_id: number | null;
+  name: string;
+  match_method: 'exact' | 'normalized' | 'surname' | 'fuzzy' | 'disambiguated';
+  confidence: number;
+}
+
+export interface AmbiguousEntity {
+  entity_type: 'title' | 'person';
+  raw_query: string;
+  candidates: Array<{
+    id: number;
+    name: string;
+    release_year?: number;
+    type?: string;
+  }>;
+  message: string;
+}
+
+export type ItemPolarity = 'positive' | 'negative' | 'unresolved';
+
+export interface ExtractedItem {
+  raw: string;
+  normalized: string;
+  category:
+    | 'genre'
+    | 'theme'
+    | 'person'
+    | 'title'
+    | 'franchise'
+    | 'language'
+    | 'platform'
+    | 'era'
+    | 'runtime'
+    | 'experience'
+    | 'other';
+  polarity: ItemPolarity;
+  evidence?: string;
+  confidence?: number;
 }
 
 export interface GuidedQuizAnswers {

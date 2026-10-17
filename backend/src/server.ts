@@ -23,7 +23,19 @@ async function bootstrap() {
   // 2. Wire up the real MySQL repository
   const repository = new SQLMovieRepository();
 
-  // 3. Create & start Express
+  // 3. Load person catalog from database BEFORE server starts listening
+  // If the database is unavailable at startup, the server must refuse to start.
+  console.log('📦 Loading person catalog from database...');
+  const { initPersonCatalogFromDatabase } = await import('./services/customPromptParser');
+  await initPersonCatalogFromDatabase();
+  console.log('✅ Person catalog loaded successfully from database.');
+
+  // 4. Pre-warm recommendation engine (load binary embeddings & cache)
+  const { RecommendationEngine } = await import('./services/recommendation/recommendationEngine');
+  await RecommendationEngine.getInstance().init();
+  console.log('✅ Recommendation engine initialized.');
+
+  // 5. Create & start Express ONLY after catalog load completes
   const app = createApp(repository);
 
   app.listen(PORT, () => {
@@ -37,15 +49,6 @@ async function bootstrap() {
     console.log(`   GET  /api/movies/:id          - Movie details`);
     console.log(`   GET  /api/health              - Health check\n`);
   });
-
-  // 4. Pre-warm recommendation engine and person catalog (load binary embeddings & cache)
-  import('./services/recommendation/recommendationEngine')
-    .then(({ RecommendationEngine }) => RecommendationEngine.getInstance().init())
-    .catch((err) => console.warn('[Bootstrap] Recommendation engine lazy load enabled:', err.message));
-
-  import('./services/customPromptParser')
-    .then(({ initPersonCatalogFromDatabase }) => initPersonCatalogFromDatabase())
-    .catch((err) => console.warn('[Bootstrap] Person catalog lazy load enabled:', err.message));
 }
 
 bootstrap().catch((err) => {

@@ -208,9 +208,19 @@ export class RecommendationEngine {
       recommendations,
     };
 
+    if (recommendations.length < RECOMMENDATION_CONFIG.topKSelection) {
+      response.message = recommendations.length === 0
+        ? "No titles matched all your specified constraints. Try broadening your criteria."
+        : `Only ${recommendations.length} title${recommendations.length === 1 ? '' : 's'} matched all your specified constraints in our catalog.`;
+    }
+
     if (includeDebug) {
       response.debug = {
         candidate_pool_size: candidateDnas.length,
+        missing_metadata_filtered: {
+          directors: this.retriever.lastMissingDirectorCount,
+          actors: this.retriever.lastMissingActorCount,
+        },
         top_candidates: finalRanked.map((c) => ({
           content_id: c.content_id,
           title: c.dna.title,

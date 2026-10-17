@@ -51,14 +51,7 @@ export class ExplanationGenerator {
       }
     }
 
-    // 3. Explicit Negative Entity Exclusion Acknowledged
-    if (profile.negative_franchises && profile.negative_franchises.length > 0) {
-      reasons.push(`Excludes ${profile.negative_franchises.join(', ')} movies`);
-    } else if (profile.negative_titles && profile.negative_titles.length > 0) {
-      reasons.push(`Excludes ${profile.negative_titles.join(', ')}`);
-    } else if (profile.negative_persons && profile.negative_persons.length > 0) {
-      reasons.push(`Excludes ${profile.negative_persons.join(', ')}`);
-    }
+
 
     // 4. Reference Title Match (Truthful signal-backed explanations)
     // Threshold raised to 0.65: below this the similarity is too loose for a confident explanation
@@ -113,46 +106,7 @@ export class ExplanationGenerator {
       reasons.push(`Binge-worthy series across ${seasons} seasons`);
     }
 
-    // 5. Negative preferences avoidance
-    // General rule: an avoidance explanation is shown ONLY when the candidate's metadata has NO genre
-    // or theme that the user asked to avoid (using profile's negative_* fields, not a fixed list of genres).
-    if (profile.negative_themes && profile.negative_themes.length > 0) {
-      const avoidedGenres = (profile.negative_genres || []).map((g) => g.toLowerCase());
-      const avoidedThemes = [
-        ...(profile.negative_themes || []),
-        ...(profile.negative_keywords || [])
-      ].map((t) => t.toLowerCase().trim()).filter(Boolean);
 
-      const candidateGenres = (dna.genres || []).map((g) => g.toLowerCase());
-      const candidateDesc = (dna.description || '').toLowerCase();
-
-      // Check if candidate metadata has any genre or theme the user asked to avoid
-      const hasAvoidedGenre = candidateGenres.some((cg) => avoidedGenres.includes(cg));
-      const hasAvoidedTheme = avoidedThemes.some((term) => {
-        const inGenre = candidateGenres.some((cg) => cg.includes(term) || term.includes(cg));
-        const inDesc = new RegExp(`\\b${term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(candidateDesc);
-        const thematicGenreConflict =
-          /trauma|traumatic|violent|violence|scary|horror|disturbing|gore|nightmare/i.test(term) &&
-          candidateGenres.some((cg) => ['horror', 'thriller', 'crime', 'war', 'war & politics'].includes(cg));
-        return inGenre || inDesc || thematicGenreConflict;
-      });
-
-      const candidateHasAvoidedContent = hasAvoidedGenre || hasAvoidedTheme;
-
-      if (!candidateHasAvoidedContent) {
-        const hasAffirmativeEvidence =
-          Boolean(dna.description && /cozy|warm|gentle|comforting|feel-good|lighthearted|slice of life|wholesome/i.test(dna.description)) ||
-          candidateGenres.some((cg) => ['family', 'animation', 'comedy'].includes(cg));
-
-        if (hasAffirmativeEvidence) {
-          if (profile.experience && profile.experience.includes('emotional')) {
-            reasons.push('Emotional storytelling while avoiding strongly depressing themes');
-          } else {
-            reasons.push(`Avoids ${profile.negative_themes.slice(0, 2).join(' and ')} themes while matching your requested tone`);
-          }
-        }
-      }
-    }
 
     // 6. Platform availability
     if (profile.platforms && profile.platforms.length > 0) {

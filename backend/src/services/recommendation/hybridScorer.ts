@@ -70,6 +70,11 @@ export class HybridScorer {
       (profile.negative_genres && profile.negative_genres.length > 0) ||
       (profile.negative_themes && profile.negative_themes.length > 0) ||
       (profile.negative_keywords && profile.negative_keywords.length > 0) ||
+      (profile.unresolved_references && profile.unresolved_references.length > 0) ||
+      (profile.unresolved_persons && profile.unresolved_persons.length > 0) ||
+      (profile.ambiguous_entities && profile.ambiguous_entities.length > 0) ||
+      profile.clarification_needed === true ||
+      profile.low_confidence === true ||
       (profile.type !== null && profile.type !== undefined) ||
       profile.runtime_preference !== null ||
       profile.runtime_relation !== null ||

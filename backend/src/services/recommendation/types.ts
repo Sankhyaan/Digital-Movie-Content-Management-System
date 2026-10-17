@@ -99,6 +99,10 @@ export interface RecommendationResponse {
 
 export interface RecommendationDebugInfo {
   candidate_pool_size: number;
+  missing_metadata_filtered?: {
+    directors: number;
+    actors: number;
+  };
   top_candidates?: Array<{
     content_id: number;
     title: string;

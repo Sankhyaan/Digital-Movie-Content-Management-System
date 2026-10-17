@@ -12,8 +12,6 @@
 // 4. Token-safe reference-title resolution with lexical collision prevention
 // =============================================================================
 
-import fs from 'fs';
-import path from 'path';
 import { pool } from '../db/connection';
 import {
   CANONICAL_GENRES,
@@ -21,25 +19,67 @@ import {
   CANONICAL_PLATFORMS,
   EraPreference,
   ExperiencePreference,
+  ExtractedItem,
+  ItemPolarity,
   QualityPreference,
   RuntimePreference,
   RuntimeRelation,
-  UserPreferenceProfile
+  UserPreferenceProfile,
+  ResolvedEntity,
+  AmbiguousEntity
 } from '../models/preferenceProfile';
+
+// =============================================================================
+// CONTROLLED CATALOG CONCEPT VOCABULARY & NORMALIZER (PHASE 1)
+// =============================================================================
+// Generated directly from live MySQL table content descriptions & genres.
+// Maps surface variations (e.g. "murdered", "gets murdered") to canonical concepts.
+
+let catalogConceptMap: Record<string, string> = {};
+try {
+  const vocabData = require('./catalogConceptVocabulary.json');
+  if (vocabData && vocabData.concept_map) {
+    catalogConceptMap = vocabData.concept_map;
+  }
+} catch {
+  // Graceful fallback if vocab file not present
+}
+
+export function normalizeConcept(wordOrPhrase: string): string {
+  const cleaned = wordOrPhrase.trim().toLowerCase().replace(/[^a-z0-9\s\-]/g, '');
+  if (!cleaned) return cleaned;
+  if (catalogConceptMap[cleaned]) {
+    return catalogConceptMap[cleaned];
+  }
+  const parts = cleaned.split(/\s+/).filter(Boolean);
+  if (parts.length === 1 && catalogConceptMap[parts[0]]) {
+    return catalogConceptMap[parts[0]];
+  }
+  let s = cleaned;
+  if (s.endsWith('ies') && s.length > 4) s = s.slice(0, -3) + 'y';
+  else if (s.endsWith('ing') && s.length > 5) s = s.slice(0, -3);
+  else if (s.endsWith('ed') && s.length > 4) s = s.slice(0, -2);
+  else if (s.endsWith('es') && s.length > 4) s = s.slice(0, -2);
+  else if (s.endsWith('s') && !s.endsWith('ss') && s.length > 3) s = s.slice(0, -1);
+  if (catalogConceptMap[s]) {
+    return catalogConceptMap[s];
+  }
+  return cleaned;
+}
 
 // Mapping rules for genre synonyms to canonical 25-genre taxonomy
 // Covers natural user vocabulary far beyond formal genre labels
 const GENRE_RULES: Array<{ pattern: RegExp; canonical: typeof CANONICAL_GENRES[number] }> = [
-  { pattern: /\b(sci-?fi|science\s+fiction|space\s+opera|futuristic|dystopian|post-?apocalyptic|alien|robot|time\s+travel|cyberpunk|steampunk)\b/i, canonical: 'Sci-Fi & Fantasy' },
+  { pattern: /\b(sci-?fi|science\s+fiction|space(\s+exploration|\s+opera)?|futuristic|dystopian|post-?apocalyptic|alien|robot|time\s+travel|cyberpunk|steampunk)\b/i, canonical: 'Sci-Fi & Fantasy' },
   { pattern: /\b(action|action-?packed|fight(s)?|martial\s+arts|kung\s+fu|explosive|stunt|chase)\b/i, canonical: 'Action' },
   { pattern: /\b(adventure|quest|journey|exploration|expedition)\b/i, canonical: 'Adventure' },
   { pattern: /\b(animation|animated|anime|cartoon|pixar|studio\s+ghibli|3d\s+animation)\b/i, canonical: 'Animation' },
   { pattern: /\b(comedy|comedies|funny|hilarious|humor|humorous|laugh|witty|slapstick|satire|satirical|parody|mockumentary|rom-?com)\b/i, canonical: 'Comedy' },
   { pattern: /\b(crime|gangster|mafia|heist|robbery|mob|detective|noir|murder|whodunit|serial\s+killer|organized\s+crime|true\s+crime)\b/i, canonical: 'Crime' },
   { pattern: /\b(documentary|documentaries|docuseries|docudrama|real\s+story|based\s+on\s+true|non-?fiction|nature\s+doc)\b/i, canonical: 'Documentary' },
-  { pattern: /\b(drama|dramatic|character\s+study|indie|slice\s+of\s+life|coming\s+of\s+age|coming-of-age|literary)\b/i, canonical: 'Drama' },
+  { pattern: /\b(drama|dramatic|character\s+study|indie|slice\s+of\s+life|coming\s+of\s+age|coming-of-age|literary|traged(y|ic))\b/i, canonical: 'Drama' },
   { pattern: /\b(family|family-?friendly|kids?|children|all\s+ages|toddler|wholesome|g-?rated|pg-?rated)\b/i, canonical: 'Family' },
-  { pattern: /\b(fantasy|magical|wizard|witch|dragon|fairy\s+tale|fairy-?tale|mytholog(y|ical)|folklore|enchant|medieval\s+fantasy|dark\s+fantasy)\b/i, canonical: 'Fantasy' },
+  { pattern: /\b(fantasy|magical|wizard|witch|dragon|fairy\s+tale|fairy-?tale|mytholog(y|ical)|folklore|enchant|medieval\s+fantasy|dark\s+fantasy|supernatural)\b/i, canonical: 'Fantasy' },
   { pattern: /\b(histor(y|ical|ic)|period\s+(piece|drama|film)|biopic|biographical|true\s+histor|world\s+war|civil\s+war|ancient|renaissance)\b/i, canonical: 'History' },
   { pattern: /\b(horror|scary|spooky|terrifying|frightening|nightmare|haunted|ghost|monster|slasher|gore|supernatural\s+horror|psychological\s+horror|creature\s+feature|zombie)\b/i, canonical: 'Horror' },
   { pattern: /\b(music|musical|concert|band|rockstar|pop\s+star|soundtrack|singing|dance\s+movie|jukebox)\b/i, canonical: 'Music' },
@@ -50,6 +90,28 @@ const GENRE_RULES: Array<{ pattern: RegExp; canonical: typeof CANONICAL_GENRES[n
   { pattern: /\b(western|cowboy|old\s+west|frontier|gunslinger|saloon|wild\s+west)\b/i, canonical: 'Western' },
   { pattern: /\b(superhero|super\s+hero|marvel|dc\s+comics|comic\s+book\s+(hero|film)|caped|avengers|batman|spider-?man)\b/i, canonical: 'Action' }, // Superhero → Action
   { pattern: /\b(spy|espionage|secret\s+agent|undercover|cia|mi6|james\s+bond|covert\s+op)\b/i, canonical: 'Thriller' }, // Spy → Thriller
+];
+
+// Formal genre rules for strict genre exclusions (avoids sub-themes like "alien", "time travel", "slapstick" banning genres)
+const GENRE_FORMAL_RULES: Array<{ pattern: RegExp; canonical: typeof CANONICAL_GENRES[number] }> = [
+  { pattern: /\b(sci-?fi|science\s+fiction)\b/i, canonical: 'Sci-Fi & Fantasy' },
+  { pattern: /\b(action)\b/i, canonical: 'Action' },
+  { pattern: /\b(adventure)\b/i, canonical: 'Adventure' },
+  { pattern: /\b(animation|animated|anime|cartoon|pixar)\b/i, canonical: 'Animation' },
+  { pattern: /\b(comedy|comedies|funny|hilarious|rom-?com)\b/i, canonical: 'Comedy' },
+  { pattern: /\b(crime)\b/i, canonical: 'Crime' },
+  { pattern: /\b(documentary|documentaries|docuseries|non-?fiction)\b/i, canonical: 'Documentary' },
+  { pattern: /\b(drama|dramatic)\b/i, canonical: 'Drama' },
+  { pattern: /\b(family|kids?|children)\b/i, canonical: 'Family' },
+  { pattern: /\b(fantasy|supernatural)\b/i, canonical: 'Fantasy' },
+  { pattern: /\b(history|historical|biopic)\b/i, canonical: 'History' },
+  { pattern: /\b(horror|scary|spooky|terrifying|frightening|slasher)\b/i, canonical: 'Horror' },
+  { pattern: /\b(music|musical|musicals)\b/i, canonical: 'Music' },
+  { pattern: /\b(mystery|mysteries)\b/i, canonical: 'Mystery' },
+  { pattern: /\b(romance|romantic)\b/i, canonical: 'Romance' },
+  { pattern: /\b(thriller|thrillers?|suspense)\b/i, canonical: 'Thriller' },
+  { pattern: /\b(war)\b/i, canonical: 'War' },
+  { pattern: /\b(western|westerns)\b/i, canonical: 'Western' },
 ];
 
 // Mapping rules for platforms
@@ -102,78 +164,20 @@ const STOPWORDS = new Set([
 // CATALOG PERSON RESOLUTION (ACTORS & DIRECTORS)
 // =============================================================================
 
+export interface CatalogPerson {
+  id: number;
+  name: string;
+}
+
 let personCatalogInitialized = false;
 let isCatalogDegraded = false;
-const actorCatalogMap = new Map<string, string>(); // lower -> canonical
-const directorCatalogMap = new Map<string, string>(); // lower -> canonical
-const directorSurnameMap = new Map<string, string>(); // surname -> canonical
+const actorCatalogMap = new Map<string, CatalogPerson[]>(); // lower full name -> persons
+const actorSurnameMap = new Map<string, CatalogPerson[]>(); // lower surname -> persons
+const directorCatalogMap = new Map<string, CatalogPerson[]>(); // lower full name -> persons
+const directorSurnameMap = new Map<string, CatalogPerson[]>(); // lower surname -> persons
 
 export function isPersonCatalogDegraded(): boolean {
   return isCatalogDegraded;
-}
-
-export function ensurePersonCatalogLoadedFromFile(): void {
-  try {
-    const candidatePaths = [
-      path.join(__dirname, '../../data/movie_dna.json'),
-      path.join(__dirname, '../../../data/movie_dna.json'),
-      path.join(process.cwd(), 'data/movie_dna.json'),
-      path.join(process.cwd(), 'backend/data/movie_dna.json'),
-    ];
-
-    let dnaPath: string | null = null;
-    for (const p of candidatePaths) {
-      if (fs.existsSync(p)) {
-        dnaPath = p;
-        break;
-      }
-    }
-
-    if (dnaPath) {
-      const raw = fs.readFileSync(dnaPath, 'utf8');
-      const records = JSON.parse(raw);
-      const directorCounts = new Map<string, number>();
-
-      for (const m of records) {
-        if (m.directors) {
-          for (const d of m.directors) {
-            directorCounts.set(d, (directorCounts.get(d) || 0) + 1);
-          }
-        }
-      }
-
-      for (const m of records) {
-        if (m.actors) {
-          for (const a of m.actors) {
-            const canon = a.trim();
-            actorCatalogMap.set(canon.toLowerCase(), canon);
-          }
-        }
-        if (m.directors) {
-          for (const d of m.directors) {
-            const canon = d.trim();
-            directorCatalogMap.set(canon.toLowerCase(), canon);
-            const parts = canon.split(/\s+/);
-            if (parts.length >= 2) {
-              const lastName = parts[parts.length - 1].toLowerCase();
-              if (!directorSurnameMap.has(lastName)) {
-                directorSurnameMap.set(lastName, canon);
-              } else {
-                const existing = directorSurnameMap.get(lastName)!;
-                if ((directorCounts.get(canon) || 0) > (directorCounts.get(existing) || 0)) {
-                  directorSurnameMap.set(lastName, canon);
-                }
-              }
-            }
-          }
-        }
-      }
-      personCatalogInitialized = true;
-      isCatalogDegraded = true;
-    }
-  } catch (err) {
-    console.error('[customPromptParser] Failed to load person catalog from file:', err);
-  }
 }
 
 export async function initPersonCatalogFromDatabase(): Promise<void> {
@@ -181,64 +185,76 @@ export async function initPersonCatalogFromDatabase(): Promise<void> {
 
   try {
     const [dirRows]: any = await pool.query(`
-      SELECT d.name, COUNT(cd.content_id) as cnt
+      SELECT d.director_id, d.name
       FROM director d
-      LEFT JOIN content_director cd ON d.director_id = cd.director_id
       WHERE d.name IS NOT NULL AND TRIM(d.name) != ''
-      GROUP BY d.director_id, d.name
     `);
 
     const [actRows]: any = await pool.query(`
-      SELECT name
-      FROM actor
-      WHERE name IS NOT NULL AND TRIM(name) != ''
+      SELECT a.actor_id, a.name
+      FROM actor a
+      WHERE a.name IS NOT NULL AND TRIM(a.name) != ''
     `);
 
     directorCatalogMap.clear();
     directorSurnameMap.clear();
     actorCatalogMap.clear();
-
-    const directorCounts = new Map<string, number>();
+    actorSurnameMap.clear();
 
     for (const r of dirRows) {
       const canon = r.name.trim();
-      const cnt = Number(r.cnt) || 0;
-      directorCounts.set(canon, cnt);
-      directorCatalogMap.set(canon.toLowerCase(), canon);
+      const id = Number(r.director_id);
+      const lower = canon.toLowerCase();
+      const p: CatalogPerson = { id, name: canon };
+
+      if (!directorCatalogMap.has(lower)) {
+        directorCatalogMap.set(lower, []);
+      }
+      directorCatalogMap.get(lower)!.push(p);
+
       const parts = canon.split(/\s+/);
       if (parts.length >= 2) {
         const lastName = parts[parts.length - 1].toLowerCase();
         if (!directorSurnameMap.has(lastName)) {
-          directorSurnameMap.set(lastName, canon);
-        } else {
-          const existing = directorSurnameMap.get(lastName)!;
-          if (cnt > (directorCounts.get(existing) || 0)) {
-            directorSurnameMap.set(lastName, canon);
-          }
+          directorSurnameMap.set(lastName, []);
         }
+        directorSurnameMap.get(lastName)!.push(p);
       }
     }
 
     for (const r of actRows) {
       const canon = r.name.trim();
-      actorCatalogMap.set(canon.toLowerCase(), canon);
+      const id = Number(r.actor_id);
+      const lower = canon.toLowerCase();
+      const p: CatalogPerson = { id, name: canon };
+
+      if (!actorCatalogMap.has(lower)) {
+        actorCatalogMap.set(lower, []);
+      }
+      actorCatalogMap.get(lower)!.push(p);
+
+      const parts = canon.split(/\s+/);
+      if (parts.length >= 2) {
+        const lastName = parts[parts.length - 1].toLowerCase();
+        if (!actorSurnameMap.has(lastName)) {
+          actorSurnameMap.set(lastName, []);
+        }
+        actorSurnameMap.get(lastName)!.push(p);
+      }
     }
 
     personCatalogInitialized = true;
     isCatalogDegraded = false;
   } catch (err: any) {
-    console.warn('[customPromptParser] Database person catalog query failed, falling back to file:', err.message);
-    ensurePersonCatalogLoadedFromFile();
+    console.error('[customPromptParser] Database person catalog query failed:', err.message);
+    isCatalogDegraded = true;
+    throw err;
   }
 }
 
 export function ensurePersonCatalogLoaded(): void {
-  if (personCatalogInitialized) return;
-  ensurePersonCatalogLoadedFromFile();
+  // Database is the sole source for the person catalog. No file reads.
 }
-
-// Auto-initialize synchronously on module load via file fallback
-ensurePersonCatalogLoaded();
 
 /**
  * Computes Jaro-Winkler string similarity score in [0.0, 1.0].
@@ -326,106 +342,237 @@ const COMMON_NON_PERSON_WORDS = new Set([
   'live', 'real', 'true', 'sad', 'happy', 'deep', 'epic'
 ]);
 
-export function resolveDirector(name: string): string | null {
+export interface PersonResolutionResult {
+  status: 'resolved' | 'ambiguous' | 'unresolved';
+  resolved?: {
+    id: number;
+    name: string;
+    method: 'exact' | 'surname' | 'fuzzy';
+    confidence: number;
+  };
+  candidates?: Array<{ id: number; name: string }>;
+  message?: string;
+}
+
+export function resolveDirectorDetailed(name: string): PersonResolutionResult {
   ensurePersonCatalogLoaded();
   let clean = name.trim().toLowerCase().replace(/^["'`]|["'`]$/g, '').trim();
   clean = clean.replace(/^(?:a|an|the)\s+/i, '').trim();
-  if (!clean || clean.length < 2 || COMMON_NON_PERSON_WORDS.has(clean)) return null;
+  if (!clean || clean.length < 2 || COMMON_NON_PERSON_WORDS.has(clean)) {
+    return { status: 'unresolved' };
+  }
 
   // 1. Exact full name
-  if (directorCatalogMap.has(clean)) return directorCatalogMap.get(clean)!;
+  if (directorCatalogMap.has(clean)) {
+    const list = directorCatalogMap.get(clean)!;
+    if (list.length === 1) {
+      return {
+        status: 'resolved',
+        resolved: { id: list[0].id, name: list[0].name, method: 'exact', confidence: 1.0 },
+      };
+    }
+    return {
+      status: 'ambiguous',
+      candidates: list,
+      message: `Multiple directors found for "${name}": ${list.map(d => d.name).join(', ')}. Please specify which director you mean.`,
+    };
+  }
 
   // 2. Exact single-word surname
-  if (directorSurnameMap.has(clean)) return directorSurnameMap.get(clean)!;
+  if (directorSurnameMap.has(clean)) {
+    const list = directorSurnameMap.get(clean)!;
+    if (list.length === 1) {
+      return {
+        status: 'resolved',
+        resolved: { id: list[0].id, name: list[0].name, method: 'surname', confidence: 0.95 },
+      };
+    }
+    return {
+      status: 'ambiguous',
+      candidates: list,
+      message: `Multiple directors share the surname "${name}": ${list.map(d => d.name).join(', ')}. Please specify the director's full name.`,
+    };
+  }
 
-  // 3. String similarity scoring (Jaro-Winkler >= 0.88)
+  // 3. String similarity scoring (Jaro-Winkler >= 0.88 for multi-word)
   const parts = clean.split(/\s+/);
   const isMultiWord = parts.length >= 2;
 
-  let bestMatch: string | null = null;
-  let highestScore = 0.88;
-
   if (isMultiWord) {
-    for (const [canonLower, canon] of directorCatalogMap.entries()) {
+    let bestMatch: CatalogPerson | null = null;
+    let highestScore = 0.88;
+    const candidates: Array<{ person: CatalogPerson; score: number }> = [];
+
+    for (const [canonLower, list] of directorCatalogMap.entries()) {
       const score = matchPersonName(clean, canonLower);
+      if (score >= 0.88) {
+        for (const p of list) {
+          candidates.push({ person: p, score });
+        }
+      }
       if (score > highestScore) {
         highestScore = score;
-        bestMatch = canon;
+        bestMatch = list[0];
       }
     }
+
+    if (candidates.length > 1) {
+      candidates.sort((a, b) => b.score - a.score);
+      if (candidates[0].score - candidates[1].score < 0.04) {
+        return {
+          status: 'ambiguous',
+          candidates: candidates.map(c => c.person),
+          message: `Multiple directors closely match "${name}": ${candidates.map(c => c.person.name).join(', ')}. Please specify which director you mean.`,
+        };
+      }
+      bestMatch = candidates[0].person;
+      highestScore = candidates[0].score;
+    }
+
+    if (bestMatch) {
+      return {
+        status: 'resolved',
+        resolved: { id: bestMatch.id, name: bestMatch.name, method: 'fuzzy', confidence: highestScore },
+      };
+    }
+
     const lastName = parts[parts.length - 1];
     const firstName = parts[0];
     if (directorSurnameMap.has(lastName)) {
-      const cand = directorSurnameMap.get(lastName)!;
-      const candFirst = cand.split(/\s+/)[0].toLowerCase();
-      const firstScore = computeStringSimilarity(firstName, candFirst);
-      if (firstScore >= 0.80 || candFirst.startsWith(firstName) || firstName.startsWith(candFirst)) {
-        return cand;
-      }
-    }
-  } else {
-    for (const [sName, canon] of directorSurnameMap.entries()) {
-      const score = computeStringSimilarity(clean, sName);
-      if (score > highestScore) {
-        highestScore = score;
-        bestMatch = canon;
-      }
-    }
-  }
-
-  return bestMatch;
-}
-
-export function resolveActor(name: string): string | null {
-  ensurePersonCatalogLoaded();
-  let clean = name.trim().toLowerCase().replace(/^["'`]|["'`]$/g, '').trim();
-  clean = clean.replace(/^(?:a|an|the)\s+/i, '').trim();
-  if (!clean || clean.length < 2 || COMMON_NON_PERSON_WORDS.has(clean)) return null;
-
-  // 1. Exact full name
-  if (actorCatalogMap.has(clean)) return actorCatalogMap.get(clean)!;
-
-  // 2. String similarity scoring (Jaro-Winkler >= 0.88)
-  const parts = clean.split(/\s+/);
-  const isMultiWord = parts.length >= 2;
-
-  let bestMatch: string | null = null;
-  let highestScore = 0.88;
-
-  if (isMultiWord) {
-    for (const [canonLower, canon] of actorCatalogMap.entries()) {
-      const score = matchPersonName(clean, canonLower);
-      if (score > highestScore) {
-        highestScore = score;
-        bestMatch = canon;
-      }
-    }
-  } else {
-    if (clean.length >= 4) {
-      for (const [canonLower, canon] of actorCatalogMap.entries()) {
-        if (!canonLower.includes(' ')) {
-          const score = computeStringSimilarity(clean, canonLower);
-          if (score > highestScore) {
-            highestScore = score;
-            bestMatch = canon;
-          }
+      const candList = directorSurnameMap.get(lastName)!;
+      for (const cand of candList) {
+        const candFirst = cand.name.split(/\s+/)[0].toLowerCase();
+        const firstScore = computeStringSimilarity(firstName, candFirst);
+        if (firstScore >= 0.80 || candFirst.startsWith(firstName) || firstName.startsWith(candFirst)) {
+          return {
+            status: 'resolved',
+            resolved: { id: cand.id, name: cand.name, method: 'fuzzy', confidence: 0.9 },
+          };
         }
       }
     }
   }
 
-  return bestMatch;
+  return { status: 'unresolved' };
 }
 
-export function extractPersonsFromPrompt(prompt: string): {
+export function resolveDirector(name: string): string | null {
+  const res = resolveDirectorDetailed(name);
+  if (res.status === 'resolved' && res.resolved) {
+    return res.resolved.name;
+  }
+  return null;
+}
+
+export function resolveActorDetailed(name: string): PersonResolutionResult {
+  ensurePersonCatalogLoaded();
+  let clean = name.trim().toLowerCase().replace(/^["'`]|["'`]$/g, '').trim();
+  clean = clean.replace(/^(?:a|an|the)\s+/i, '').trim();
+  if (!clean || clean.length < 2 || COMMON_NON_PERSON_WORDS.has(clean)) {
+    return { status: 'unresolved' };
+  }
+
+  // 1. Exact full name
+  if (actorCatalogMap.has(clean)) {
+    const list = actorCatalogMap.get(clean)!;
+    if (list.length === 1) {
+      return {
+        status: 'resolved',
+        resolved: { id: list[0].id, name: list[0].name, method: 'exact', confidence: 1.0 },
+      };
+    }
+    return {
+      status: 'ambiguous',
+      candidates: list,
+      message: `Multiple actors found for "${name}": ${list.map(a => a.name).join(', ')}. Please specify which actor you mean.`,
+    };
+  }
+
+  // 2. Exact single-word surname
+  if (actorSurnameMap.has(clean)) {
+    const list = actorSurnameMap.get(clean)!;
+    if (list.length === 1) {
+      return {
+        status: 'resolved',
+        resolved: { id: list[0].id, name: list[0].name, method: 'surname', confidence: 0.95 },
+      };
+    }
+    return {
+      status: 'ambiguous',
+      candidates: list,
+      message: `Multiple actors share the surname "${name}": ${list.map(a => a.name).join(', ')}. Please specify the actor's full name.`,
+    };
+  }
+
+  // 3. String similarity scoring (Jaro-Winkler >= 0.88)
+  const parts = clean.split(/\s+/);
+  const isMultiWord = parts.length >= 2;
+
+  if (isMultiWord) {
+    let bestMatch: CatalogPerson | null = null;
+    let highestScore = 0.88;
+    const candidates: Array<{ person: CatalogPerson; score: number }> = [];
+
+    for (const [canonLower, list] of actorCatalogMap.entries()) {
+      const score = matchPersonName(clean, canonLower);
+      if (score >= 0.88) {
+        for (const p of list) {
+          candidates.push({ person: p, score });
+        }
+      }
+      if (score > highestScore) {
+        highestScore = score;
+        bestMatch = list[0];
+      }
+    }
+
+    if (candidates.length > 1) {
+      candidates.sort((a, b) => b.score - a.score);
+      if (candidates[0].score - candidates[1].score < 0.04) {
+        return {
+          status: 'ambiguous',
+          candidates: candidates.map(c => c.person),
+          message: `Multiple actors closely match "${name}": ${candidates.map(c => c.person.name).join(', ')}. Please specify which actor you mean.`,
+        };
+      }
+      bestMatch = candidates[0].person;
+      highestScore = candidates[0].score;
+    }
+
+    if (bestMatch) {
+      return {
+        status: 'resolved',
+        resolved: { id: bestMatch.id, name: bestMatch.name, method: 'fuzzy', confidence: highestScore },
+      };
+    }
+  }
+
+  return { status: 'unresolved' };
+}
+
+export function resolveActor(name: string): string | null {
+  const res = resolveActorDetailed(name);
+  if (res.status === 'resolved' && res.resolved) {
+    return res.resolved.name;
+  }
+  return null;
+}
+
+export interface ExtractedPersonsResult {
   actors: string[];
   directors: string[];
   actor_match_mode: 'all' | 'any';
   unresolved_persons: string[];
-} {
+  resolved_persons: ResolvedEntity[];
+  ambiguous_persons: AmbiguousEntity[];
+}
+
+export function extractPersonsFromPrompt(prompt: string): ExtractedPersonsResult {
   const extractedActors = new Set<string>();
   const extractedDirectors = new Set<string>();
   const unresolvedPersons = new Set<string>();
+  const resolvedPersons: ResolvedEntity[] = [];
+  const ambiguousPersons: AmbiguousEntity[] = [];
   let actorMatchMode: 'all' | 'any' = 'all';
 
   // Check 'or' vs 'and' for multiple actors
@@ -435,13 +582,27 @@ export function extractPersonsFromPrompt(prompt: string): {
 
   // 1. Director patterns
   // Pattern 1a: 'directed by <Person>' or 'director <Person>' or 'films by <Person>' or 'movies by <Person>'
-  const dirRegex1 = /\b(?:directed\s+by|director|films?\s+by|movies?\s+by)\s+([A-Za-z0-9\s'’\.\-]+?)(?=(?:\s+(?:in|from|under|less|longer|shorter|rated|on|released))|(?:[.,;!?]|$))/gi;
+  const dirRegex1 = /\b(?:directed\s+by|director|films?\s+by|movies?\s+by)\s+([A-Za-z0-9\s'’\.\-]+?)(?=(?:\s+(?:starring|featuring|with|in|from|under|less|longer|shorter|rated|on|released))|(?:[.,;!?]|$))/gi;
   let dMatch: RegExpExecArray | null;
   while ((dMatch = dirRegex1.exec(prompt)) !== null) {
     const candidate = dMatch[1].trim();
-    const res = resolveDirector(candidate);
-    if (res) {
-      extractedDirectors.add(res);
+    const res = resolveDirectorDetailed(candidate);
+    if (res.status === 'resolved' && res.resolved) {
+      extractedDirectors.add(res.resolved.name);
+      resolvedPersons.push({
+        entity_type: 'director',
+        matched_id: res.resolved.id,
+        name: res.resolved.name,
+        match_method: res.resolved.method,
+        confidence: res.resolved.confidence,
+      });
+    } else if (res.status === 'ambiguous' && res.candidates) {
+      ambiguousPersons.push({
+        entity_type: 'person',
+        raw_query: candidate,
+        candidates: res.candidates,
+        message: res.message!,
+      });
     } else if (candidate.length >= 2 && !COMMON_NON_PERSON_WORDS.has(candidate.toLowerCase())) {
       unresolvedPersons.add(candidate);
     }
@@ -451,13 +612,29 @@ export function extractPersonsFromPrompt(prompt: string): {
   const dirRegex2 = /\b([A-Za-z'’\.\-]+(?:\s+[A-Za-z'’\.\-]+)?)\s+(?:movies?|films?|shows?|series|cinema|flicks?|thrillers?|comedies?|dramas?|sci-?fi)\b/gi;
   while ((dMatch = dirRegex2.exec(prompt)) !== null) {
     const candidate = dMatch[1].trim();
-    const res = resolveDirector(candidate);
-    if (res) extractedDirectors.add(res);
+    const res = resolveDirectorDetailed(candidate);
+    if (res.status === 'resolved' && res.resolved) {
+      extractedDirectors.add(res.resolved.name);
+      resolvedPersons.push({
+        entity_type: 'director',
+        matched_id: res.resolved.id,
+        name: res.resolved.name,
+        match_method: res.resolved.method,
+        confidence: res.resolved.confidence,
+      });
+    } else if (res.status === 'ambiguous' && res.candidates) {
+      ambiguousPersons.push({
+        entity_type: 'person',
+        raw_query: candidate,
+        candidates: res.candidates,
+        message: res.message!,
+      });
+    }
   }
 
   // 2. Actor patterns
   // Pattern 2a: 'starring <Person>', 'featuring <Person>', 'with <Person>'
-  const actorRegex1 = /\b(?:(starring|featuring)|(with))\s+([A-Za-z0-9\s'’\.\-]+?)(?=(?:\s+(?:in|from|under|less|longer|shorter|rated|on|released))|(?:[.,;!?]|$))/gi;
+  const actorRegex1 = /\b(?:(starring|featuring)|(with))\s+([A-Za-z0-9\s'’\.\-]+?)(?=(?:\s+(?:directed\s+by|director|in|from|under|less|longer|shorter|rated|on|released))|(?:[.,;!?]|$))/gi;
   let aMatch: RegExpExecArray | null;
   while ((aMatch = actorRegex1.exec(prompt)) !== null) {
     const isWith = Boolean(aMatch[2]);
@@ -466,16 +643,49 @@ export function extractPersonsFromPrompt(prompt: string): {
     const parts = candidateStr.split(/\b(?:and|or)\b|,/).map(s => s.trim()).filter(Boolean);
     for (const part of parts) {
       if (
-        part.split(/\s+/).length > 3 ||
+        (isWith ? part.split(/\s+/).length > 3 : part.split(/\s+/).length > 4) ||
         /\b(no|not|without|zero|none|scenes?|elements?|effects?|dialogue|music|pacing|humor|comedy|drama|horror|action|thriller|vibe|mood|atmosphere|twist|story|plot|theme|ending|feel|runtime|eco|futurism|community)\b/i.test(part)
       ) {
         continue;
       }
-      const res = resolveActor(part);
-      if (res) {
-        extractedActors.add(res);
-      } else if (!isWith && part.length >= 2 && !COMMON_NON_PERSON_WORDS.has(part.toLowerCase())) {
-        unresolvedPersons.add(part);
+      const res = resolveActorDetailed(part);
+      if (res.status === 'resolved' && res.resolved) {
+        extractedActors.add(res.resolved.name);
+        resolvedPersons.push({
+          entity_type: 'actor',
+          matched_id: res.resolved.id,
+          name: res.resolved.name,
+          match_method: res.resolved.method,
+          confidence: res.resolved.confidence,
+        });
+      } else if (res.status === 'ambiguous' && res.candidates) {
+        ambiguousPersons.push({
+          entity_type: 'person',
+          raw_query: part,
+          candidates: res.candidates,
+          message: res.message!,
+        });
+      } else {
+        const dirRes = resolveDirectorDetailed(part);
+        if (dirRes.status === 'resolved' && dirRes.resolved) {
+          extractedDirectors.add(dirRes.resolved.name);
+          resolvedPersons.push({
+            entity_type: 'director',
+            matched_id: dirRes.resolved.id,
+            name: dirRes.resolved.name,
+            match_method: dirRes.resolved.method,
+            confidence: dirRes.resolved.confidence,
+          });
+        } else if (dirRes.status === 'ambiguous' && dirRes.candidates) {
+          ambiguousPersons.push({
+            entity_type: 'person',
+            raw_query: part,
+            candidates: dirRes.candidates,
+            message: dirRes.message!,
+          });
+        } else if (!isWith && part.length >= 2 && !COMMON_NON_PERSON_WORDS.has(part.toLowerCase())) {
+          unresolvedPersons.add(part);
+        }
       }
     }
   }
@@ -488,8 +698,24 @@ export function extractPersonsFromPrompt(prompt: string): {
     if (dirRes && extractedDirectors.has(dirRes)) {
       continue;
     }
-    const res = resolveActor(candidate);
-    if (res) extractedActors.add(res);
+    const res = resolveActorDetailed(candidate);
+    if (res.status === 'resolved' && res.resolved) {
+      extractedActors.add(res.resolved.name);
+      resolvedPersons.push({
+        entity_type: 'actor',
+        matched_id: res.resolved.id,
+        name: res.resolved.name,
+        match_method: res.resolved.method,
+        confidence: res.resolved.confidence,
+      });
+    } else if (res.status === 'ambiguous' && res.candidates) {
+      ambiguousPersons.push({
+        entity_type: 'person',
+        raw_query: candidate,
+        candidates: res.candidates,
+        message: res.message!,
+      });
+    }
   }
 
   return {
@@ -497,6 +723,8 @@ export function extractPersonsFromPrompt(prompt: string): {
     directors: Array.from(extractedDirectors),
     actor_match_mode: actorMatchMode,
     unresolved_persons: Array.from(unresolvedPersons),
+    resolved_persons: resolvedPersons,
+    ambiguous_persons: ambiguousPersons,
   };
 }
 
@@ -541,74 +769,142 @@ export function isSafeReferenceTitleMatch(candidate: string, targetTitle: string
  * Resolves a potential candidate title against the CineVerse local MySQL `content` table.
  * NO external APIs or TMDB calls are made.
  */
-export async function resolveTitleFromDatabase(
+export interface TitleResolutionResult {
+  status: 'resolved' | 'ambiguous' | 'unresolved';
+  resolved?: {
+    id: number;
+    title: string;
+    release_year: number;
+    type: string;
+    method: 'exact' | 'normalized' | 'disambiguated';
+    confidence: number;
+  };
+  candidates?: Array<{ id: number; name: string; release_year?: number; type?: string }>;
+  message?: string;
+}
+
+export async function resolveTitleDetailed(
   candidate: string,
+  yearConstraint?: number | null,
   typeConstraint?: 'Movie' | 'Series' | null
-): Promise<string | null> {
+): Promise<TitleResolutionResult> {
   const clean = candidate.trim().replace(/^["'`]|["'`]$/g, '').trim();
-  if (!clean || clean.length < 2) return null;
+  if (!clean || clean.length < 2) return { status: 'unresolved' };
+
+  let targetTitle = clean;
+  let targetYear = yearConstraint || null;
+
+  // Check if candidate string contains an embedded release year, e.g. "One Piece 1999" or "Dune (2021)"
+  const yearMatch = clean.match(/\s*\(?(19\d\d|20\d\d)\)?$/);
+  if (yearMatch) {
+    targetYear = Number(yearMatch[1]);
+    targetTitle = clean.replace(/\s*\(?(19\d\d|20\d\d)\)?$/, '').trim();
+  }
 
   try {
-    // 1. Direct case-insensitive match on canonical content table (with type constraint priority)
-    if (typeConstraint) {
-      const [typeRows]: any = await pool.query(
-        'SELECT title FROM content WHERE LOWER(title) = LOWER(?) AND type = ? LIMIT 1',
-        [clean, typeConstraint]
-      );
-      if (typeRows && typeRows.length > 0) return typeRows[0].title;
-    }
-
-    const [rows]: any = await pool.query(
-      'SELECT title FROM content WHERE LOWER(title) = LOWER(?) LIMIT 1',
-      [clean]
+    const [exactRows]: any = await pool.query(
+      'SELECT content_id, title, release_year, type FROM content WHERE LOWER(title) = LOWER(?)',
+      [targetTitle]
     );
-    if (rows && rows.length > 0) {
-      return rows[0].title;
-    }
 
-    // 2. Try prefixing "The " if not present
-    if (!/^the\s+/i.test(clean)) {
-      const [theRows]: any = await pool.query(
-        'SELECT title FROM content WHERE LOWER(title) = LOWER(?) LIMIT 1',
-        [`The ${clean}`]
-      );
-      if (theRows && theRows.length > 0) {
-        return theRows[0].title;
+    let rows: any[] = exactRows || [];
+
+    if (rows.length === 0) {
+      if (!/^the\s+/i.test(targetTitle)) {
+        const [theRows]: any = await pool.query(
+          'SELECT content_id, title, release_year, type FROM content WHERE LOWER(title) = LOWER(?)',
+          [`The ${targetTitle}`]
+        );
+        if (theRows && theRows.length > 0) rows = theRows;
+      } else {
+        const withoutThe = targetTitle.replace(/^the\s+/i, '').trim();
+        const [noTheRows]: any = await pool.query(
+          'SELECT content_id, title, release_year, type FROM content WHERE LOWER(title) = LOWER(?)',
+          [withoutThe]
+        );
+        if (noTheRows && noTheRows.length > 0) rows = noTheRows;
       }
     }
 
-    // 3. Try stripping "The " if present
-    if (/^the\s+/i.test(clean)) {
-      const withoutThe = clean.replace(/^the\s+/i, '').trim();
-      const [noTheRows]: any = await pool.query(
-        'SELECT title FROM content WHERE LOWER(title) = LOWER(?) LIMIT 1',
-        [withoutThe]
-      );
-      if (noTheRows && noTheRows.length > 0) {
-        return noTheRows[0].title;
-      }
-    }
-
-    // 4. Token-safe lookup for multi-word titles (prevent single-word collisions)
-    const candTokens = clean.toLowerCase().split(/[\s:\-,!?]+/).filter((t) => !STOPWORDS.has(t) && t.length > 0);
-    if (candTokens.length >= 2) {
-      const [likeRows]: any = await pool.query(
-        'SELECT title FROM content WHERE title LIKE ? LIMIT 10',
-        [`${clean}%`]
-      );
-      if (likeRows && likeRows.length > 0) {
-        for (const r of likeRows) {
-          if (isSafeReferenceTitleMatch(clean, r.title)) {
-            return r.title;
+    if (rows.length === 0) {
+      const candTokens = targetTitle.toLowerCase().split(/[\s:\-,!?]+/).filter((t) => !STOPWORDS.has(t) && t.length > 0);
+      if (candTokens.length >= 2) {
+        const [likeRows]: any = await pool.query(
+          'SELECT content_id, title, release_year, type FROM content WHERE title LIKE ? LIMIT 10',
+          [`${targetTitle}%`]
+        );
+        if (likeRows && likeRows.length > 0) {
+          for (const r of likeRows) {
+            if (isSafeReferenceTitleMatch(targetTitle, r.title)) {
+              rows.push(r);
+            }
           }
         }
       }
     }
 
-    return null;
-  } catch {
-    return null;
+    if (rows.length === 0) {
+      return { status: 'unresolved' };
+    }
+
+    let filtered = rows;
+    if (typeConstraint) {
+      const byType = filtered.filter((r: any) => r.type.toLowerCase() === typeConstraint.toLowerCase());
+      if (byType.length > 0) filtered = byType;
+    }
+
+    let disambiguated = false;
+    if (targetYear) {
+      const byYear = filtered.filter((r: any) => Number(r.release_year) === targetYear);
+      if (byYear.length > 0) {
+        filtered = byYear;
+        disambiguated = true;
+      }
+    }
+
+    if (filtered.length === 1) {
+      const m = filtered[0];
+      return {
+        status: 'resolved',
+        resolved: {
+          id: m.content_id,
+          title: m.title,
+          release_year: m.release_year,
+          type: m.type,
+          method: disambiguated ? 'disambiguated' : 'exact',
+          confidence: 1.0,
+        },
+      };
+    }
+
+    const candidates = filtered.map((r: any) => ({
+      id: r.content_id,
+      name: r.title,
+      release_year: r.release_year,
+      type: r.type,
+    }));
+
+    const candDesc = candidates.map(c => `${c.name} (${c.release_year}, ${c.type})`).join(' and ');
+    return {
+      status: 'ambiguous',
+      candidates,
+      message: `Multiple titles found for "${candidate}": ${candDesc}. Please specify which release year or version you mean.`,
+    };
+  } catch (err: any) {
+    console.error('[customPromptParser] Database error in resolveTitleDetailed:', err.message);
+    return { status: 'unresolved' };
   }
+}
+
+export async function resolveTitleFromDatabase(
+  candidate: string,
+  typeConstraint?: 'Movie' | 'Series' | null
+): Promise<string | null> {
+  const res = await resolveTitleDetailed(candidate, null, typeConstraint);
+  if (res.status === 'resolved' && res.resolved) {
+    return res.resolved.title;
+  }
+  return null;
 }
 
 export interface ReferenceCandidate {
@@ -626,11 +922,11 @@ export interface ReferenceCandidate {
  * Explicitly rejects verb usages like "I like funny movies" or "movies I like".
  */
 export function extractReferenceCandidate(prompt: string): ReferenceCandidate | null {
-  const lookahead = '(?=(?:\\s+(?:but|and|with|under|less\\s+than|longer\\s+than|shorter\\s+than|shorter|longer|from|on|in|rated|released))|(?:\\s*[.,;!?]|$))';
+  const lookahead = '(?=(?:\\s+(?:starring|featuring|directed\\s+by|director|but|and|with|under|less\\s+than|longer\\s+than|shorter\\s+than|shorter|longer|from|on|in|rated|released))|(?:\\s*[.,;!?]|$))';
 
   // 1. "similar to <Title>", "movies similar to <Title>", "shows similar to <Title>", etc.
   const similarMatch = prompt.match(
-    new RegExp(`\\b(?:(?:movies?|films?|shows?|series|something|anything)\\s+)?similar\\s+to\\s+([A-Za-z0-9\\s:,'’\\-&]+?)${lookahead}`, 'i')
+    new RegExp(`\\b(?:(?:movies?|films?|shows?|series|something|anything)\\s+)?similar\\s+to\\s+([A-Za-z0-9\\s:,'’\\-&()]+?)${lookahead}`, 'i')
   );
   if (similarMatch && similarMatch[1]) {
     return { raw: similarMatch[0].trim(), candidate: similarMatch[1].trim() };
@@ -638,7 +934,7 @@ export function extractReferenceCandidate(prompt: string): ReferenceCandidate | 
 
   // 2. "something like <Title>", "movies like <Title>", "like <Title>" (at start or after punctuation)
   const likeMatch = prompt.match(
-    new RegExp(`(?:(?:\\b(?:something|anything|movies?|films?|shows?|series|cinema|give\\s+me)\\s+like)|(?:^|[.!?])\\s*(?:just\\s+)?like|\\b(?:want|looking\\s+for|recommend)\\s+like)\\s+([A-Za-z0-9\\s:,'’\\-&]+?)${lookahead}`, 'i')
+    new RegExp(`(?:(?:\\b(?:surprise\\s+me(?:\\s+(?:with|with\\s+something))?|something|anything|movies?|films?|shows?|series|cinema|give\\s+me)\\s+like)|(?:^|[.!?])\\s*(?:just\\s+)?like|\\b(?:want|looking\\s+for|recommend)\\s+like)\\s+([A-Za-z0-9\\s:,'’\\-&()]+?)${lookahead}`, 'i')
   );
   if (likeMatch && likeMatch[1]) {
     return { raw: likeMatch[0].trim(), candidate: likeMatch[1].trim() };
@@ -660,8 +956,11 @@ export function splitPromptIntoClauses(prompt: string): {
     return { positiveClauses: [], negativeClauses: [] };
   }
 
-  // Regex to split on punctuation and conjunction boundaries
-  const splitRegex = /(?:([,;.!?]+)|(\b(?:where\s+nobody|where\s+no\s+one|where\s+nothing|where\s+none|but\s+not|except\s+for|except|excluding|without|avoiding|avoid|do(?:n't|\s+not)\s+want|never)\b)|(\b(?:but|instead\s+of|rather\s+than)\b))/gi;
+  // Regex to split on punctuation and grammatical conjunction boundaries
+  // Group 1: Punctuation delimiters [,;.!?]+
+  // Group 2: Grammatical negation operators
+  // Group 3: Positive / contrastive connectors
+  const splitRegex = /(?:([,;.!?]+)|(\b(?:where\s+nobody|where\s+no\s+one|where\s+nothing|where\s+none|but\s+not\s+too|but\s+not|but\s+do(?:n't|\s+not)(?:\s+want|\s+recommend|\s+show|\s+give)?|do(?:n't|\s+not)(?:\s+want|\s+recommend|\s+show|\s+give)?|except\s+for|except|excluding|without\s+any|without|avoiding|avoid|never|devoid\s+of|free\s+of|steer\s+clear\s+of|not\s+too|with\s+zero|with\s+no)\b)|(\b(?:but|instead\s+of|rather\s+than)\b))/gi;
 
   const tokens: Array<{ type: 'text' | 'punct' | 'neg_conn' | 'pos_conn'; value: string }> = [];
   let lastIndex = 0;
@@ -702,7 +1001,7 @@ export function splitPromptIntoClauses(prompt: string): {
       continue;
     } else if (tok.type === 'text') {
       const val = tok.value;
-      const startsWithNeg = /^(?:where\s+nobody\b|where\s+no\s+one\b|where\s+nothing\b|where\s+none\b|nobody\b|no\s+one\b|no-one\b|not\b|no\b|never\b|none\b|neither\b|without\b|avoid\b|avoiding\b|exclude\b|excluding\b|except\b|nothing\b|do(?:n't|\s+not)\s+want\b)/i.test(val);
+      const startsWithNeg = /^(?:where\s+nobody\b|where\s+no\s+one\b|where\s+nothing\b|where\s+none\b|nobody\b|no\s+one\b|no-one\b|not\b|no\b|never\b|none\b|neither\b|without\b|avoid\b|avoiding\b|exclude\b|excluding\b|except\b|nothing\b|do(?:n't|\s+not)(?:\s+want|\s+recommend|\s+show|\s+give)?\b|but\s+do(?:n't|\s+not)(?:\s+want|\s+recommend|\s+show|\s+give)?\b|devoid\s+of\b|free\s+of\b|steer\s+clear\s+of\b|zero\b|anything\s+except\b|nothing\s+with\b)/i.test(val);
       const effectiveMode = startsWithNeg ? 'negative' : currentMode;
       if (effectiveMode === 'negative') {
         negativeClauses.push(val);
@@ -716,14 +1015,17 @@ export function splitPromptIntoClauses(prompt: string): {
   return { positiveClauses, negativeClauses };
 }
 
-function cleanNegativeClauseToEntity(clause: string): string {
+export function cleanNegativeClauseToEntity(clause: string): string {
   let clean = clause.trim();
-  // Remove leading negation words
-  clean = clean.replace(/^(?:where\s+nobody(?:\s+gets|\s+is)?|where\s+no\s+one(?:\s+gets|\s+is)?|where\s+nothing(?:\s+gets|\s+is)?|where\s+none(?:\s+gets|\s+is)?|nobody(?:\s+gets|\s+is)?|no\s+one(?:\s+gets|\s+is)?|nothing(?:\s+gets|\s+is)?|but\s+not|except\s+for|except|excluding|without|avoiding|avoid|do(?:n't|\s+not)\s+want|never|not|no|none|neither|nothing)\s+/i, '');
-  // Remove leading articles / pronouns
-  clean = clean.replace(/^(?:his|her|their|my|the|a|an)\s+/i, '');
-  // Remove trailing collection words
-  clean = clean.replace(/\s+(?:movies?|films?|series|shows?|flicks?|franchise|universe)$/i, '');
+  // Remove leading negation operators and phrases
+  clean = clean.replace(
+    /^(?:where\s+nobody(?:\s+gets|\s+is)?|where\s+no\s+one(?:\s+gets|\s+is)?|where\s+nothing(?:\s+gets|\s+is)?|where\s+none(?:\s+gets|\s+is)?|nobody(?:\s+gets|\s+is)?|no\s+one(?:\s+gets|\s+is)?|nothing\s+with|anything\s+except|but\s+not\s+too|but\s+not|but\s+do(?:n't|\s+not)(?:\s+want|\s+recommend|\s+show|\s+give)?|do(?:n't|\s+not)(?:\s+want|\s+recommend|\s+show|\s+give)?|except\s+for|except|excluding|without\s+any|without|avoiding|avoid|never|devoid\s+of|free\s+of|steer\s+clear\s+of|not\s+too|with\s+zero|with\s+no|zero|not|no|none|neither|nothing)\s+/i,
+    ''
+  );
+  // Remove leading articles / pronouns / fillers
+  clean = clean.replace(/^(?:his|her|their|my|the|a|an|any|all|too\s+much|too|completely)\s+/i, '');
+  // Remove trailing collection / filler words
+  clean = clean.replace(/\s+(?:movies?|films?|series|shows?|flicks?|franchise|universe|numbers?|subplots?|scenes?|elements?)$/i, '');
   // Remove surrounding quotes
   clean = clean.replace(/^["'`]|["'`]$/g, '').trim();
   return clean;
@@ -750,55 +1052,66 @@ async function resolveNegativeEntitiesFromDatabase(
     const rawEntity = cleanNegativeClauseToEntity(clause);
     if (!rawEntity || rawEntity.length < 2) continue;
 
-    // 1. Is it a person?
-    const act = resolveActor(rawEntity);
-    const dir = resolveDirector(rawEntity);
-    if (act || dir) {
-      if (act) negativePersons.add(act);
-      if (dir) negativePersons.add(dir);
-      continue;
-    }
+    // Check if the negative clause contains multiple candidates separated by 'or' or 'and'
+    const candidates = rawEntity.split(/\b(?:or|and)\b|,/).map(s => s.trim()).filter(Boolean);
 
-    // 2. Is it a canonical genre? (If so, handled in genre exclusions, don't treat as title)
-    let isGenre = false;
-    for (const rule of GENRE_RULES) {
-      if (rule.pattern.test(rawEntity) && !/\b(superhero|marvel|spider-?man|avengers|batman)\b/i.test(rawEntity)) {
-        isGenre = true;
-        break;
+    for (const cand of (candidates.length > 1 ? candidates : [rawEntity])) {
+      const cleanCand = cand.replace(/^(?:his|her|their|my|the|a|an)\s+/i, '').replace(/^["'`]|["'`]$/g, '').trim();
+      if (!cleanCand || cleanCand.length < 2) continue;
+
+      // 1. Is it a person?
+      const act = resolveActor(cleanCand);
+      const dir = resolveDirector(cleanCand);
+      if (act || dir) {
+        if (act) negativePersons.add(act);
+        if (dir) negativePersons.add(dir);
+        continue;
       }
-    }
-    if (isGenre) continue;
 
-    // 3. Query MySQL for title and franchise matches
-    try {
-      const [exactRows]: any = await pool.query(
-        'SELECT content_id, title FROM content WHERE LOWER(title) = LOWER(?) LIMIT 2',
-        [rawEntity]
-      );
-      const [prefixRows]: any = await pool.query(
-        'SELECT content_id, title FROM content WHERE LOWER(title) LIKE LOWER(?) OR LOWER(title) LIKE LOWER(?) LIMIT 10',
-        [`${rawEntity}:%`, `${rawEntity} %`]
-      );
+      // 2. Is it a canonical genre? (If so, handled in genre exclusions)
+      let isGenre = false;
+      for (const rule of GENRE_FORMAL_RULES) {
+        if (rule.pattern.test(cleanCand) && !/\b(superhero|marvel|spider-?man|avengers|batman)\b/i.test(cleanCand)) {
+          isGenre = true;
+          break;
+        }
+      }
+      if (isGenre) continue;
 
-      const hasFranchiseWord = /\b(?:movies?|films?|series|shows?|franchise|universe)\b/i.test(clause);
-
-      if (prefixRows.length > 0 || (exactRows.length > 0 && hasFranchiseWord)) {
-        negativeFranchises.add(rawEntity);
+      // 3. Known franchise check
+      if (/\b(superhero|marvel|spider-?man|avengers|batman|iron\s+man)\b/i.test(cleanCand)) {
+        if (/\b(superhero|super\s+hero)\b/i.test(cleanCand)) negativeFranchises.add('Superhero');
+        if (/\bmarvel\b/i.test(cleanCand)) negativeFranchises.add('Marvel');
+        if (/\bspider-?man\b/i.test(cleanCand)) negativeFranchises.add('Spider-Man');
+        if (/\bavengers\b/i.test(cleanCand)) negativeFranchises.add('Avengers');
+        if (/\bbatman\b/i.test(cleanCand)) negativeFranchises.add('Batman');
         lowConfidence = true;
-        if (exactRows.length > 0) {
+        continue;
+      }
+
+      // 4. Query MySQL for exact title match
+      // Note: No franchise or collection table exists in the database schema.
+      // Substring LIKE patterns ('name:%') are not used because they produce false positives.
+      try {
+        const [exactRows]: any = await pool.query(
+          'SELECT content_id, title FROM content WHERE LOWER(title) = LOWER(?) LIMIT 2',
+          [cleanCand]
+        );
+
+        const hasFranchiseWord = /\b(?:movies?|films?|series|shows?|franchise|universe)\b/i.test(clause);
+
+        if (hasFranchiseWord) {
+          negativeFranchises.add(cleanCand);
+          if (exactRows.length > 0) {
+            negativeTitles.add(exactRows[0].title);
+          }
+        } else if (exactRows.length > 0) {
           negativeTitles.add(exactRows[0].title);
         }
-      } else if (exactRows.length > 0) {
-        negativeTitles.add(exactRows[0].title);
-      } else {
-        if (/\b(?:actor|director|starring|with|star)\b/i.test(clause)) {
-          unresolvedPersons.add(rawEntity);
-        } else {
-          unresolvedReferences.add(rawEntity);
-        }
+        // Excluded phrases must NEVER be dumped into unresolvedReferences or unresolvedPersons!
+      } catch (err: any) {
+        console.error('[customPromptParser] Database error resolving negative entity:', err.message);
       }
-    } catch {
-      unresolvedReferences.add(rawEntity);
     }
   }
 
@@ -829,24 +1142,6 @@ function resolveNegativeEntitiesSync(
   const unresolvedPersons = new Set<string>();
   let lowConfidence = false;
 
-  const candidatePaths = [
-    path.join(__dirname, '../../data/movie_dna.json'),
-    path.join(__dirname, '../../../data/movie_dna.json'),
-    path.join(process.cwd(), 'data/movie_dna.json'),
-    path.join(process.cwd(), 'backend/data/movie_dna.json'),
-  ];
-  let fileTitles: string[] = [];
-  for (const p of candidatePaths) {
-    if (fs.existsSync(p)) {
-      try {
-        const raw = fs.readFileSync(p, 'utf8');
-        const parsed = JSON.parse(raw);
-        fileTitles = parsed.map((m: any) => m.title);
-        break;
-      } catch {}
-    }
-  }
-
   for (const clause of negativeClauses) {
     const rawEntity = cleanNegativeClauseToEntity(clause);
     if (!rawEntity || rawEntity.length < 2) continue;
@@ -860,7 +1155,7 @@ function resolveNegativeEntitiesSync(
     }
 
     let isGenre = false;
-    for (const rule of GENRE_RULES) {
+    for (const rule of GENRE_FORMAL_RULES) {
       if (rule.pattern.test(rawEntity) && !/\b(superhero|marvel|spider-?man|avengers|batman)\b/i.test(rawEntity)) {
         isGenre = true;
         break;
@@ -868,25 +1163,13 @@ function resolveNegativeEntitiesSync(
     }
     if (isGenre) continue;
 
-    const cleanLower = rawEntity.toLowerCase();
-    const exact = fileTitles.find((t) => t.toLowerCase() === cleanLower);
-    const prefixMatches = fileTitles.filter(
-      (t) => t.toLowerCase().startsWith(`${cleanLower}:`) || t.toLowerCase().startsWith(`${cleanLower} `)
-    );
-    const hasFranchiseWord = /\b(?:movies?|films?|series|shows?|franchise|universe)\b/i.test(clause);
-
-    if (prefixMatches.length > 0 || (exact && hasFranchiseWord)) {
-      negativeFranchises.add(rawEntity);
-      lowConfidence = true;
-      if (exact) negativeTitles.add(exact);
-    } else if (exact) {
-      negativeTitles.add(exact);
-    } else {
-      if (/\b(?:actor|director|starring|with|star)\b/i.test(clause)) {
-        unresolvedPersons.add(rawEntity);
-      } else {
-        unresolvedReferences.add(rawEntity);
-      }
+    if (/\b(superhero|marvel|spider-?man|avengers|batman|iron\s+man)\b/i.test(rawEntity)) {
+      if (/\b(superhero|super\s+hero)\b/i.test(rawEntity)) negativeFranchises.add('Superhero');
+      if (/\bmarvel\b/i.test(rawEntity)) negativeFranchises.add('Marvel');
+      if (/\bspider-?man\b/i.test(rawEntity)) negativeFranchises.add('Spider-Man');
+      if (/\bavengers\b/i.test(rawEntity)) negativeFranchises.add('Avengers');
+      if (/\bbatman\b/i.test(rawEntity)) negativeFranchises.add('Batman');
+      continue;
     }
   }
 
@@ -928,7 +1211,7 @@ function extractStructuredFeatures(prompt: string) {
   let genreExclMatch: RegExpExecArray | null;
   while ((genreExclMatch = genreExclRegex.exec(lower)) !== null) {
     const rawGenre = genreExclMatch[1];
-    for (const rule of GENRE_RULES) {
+    for (const rule of GENRE_FORMAL_RULES) {
       if (rule.pattern.test(rawGenre)) {
         negativeGenresSet.add(rule.canonical);
       }
@@ -938,7 +1221,7 @@ function extractStructuredFeatures(prompt: string) {
   // Also check if any negative clause directly specifies a genre name (e.g. "except horror")
   for (const nc of negativeClauses) {
     const ncClean = cleanNegativeClauseToEntity(nc);
-    for (const rule of GENRE_RULES) {
+    for (const rule of GENRE_FORMAL_RULES) {
       if (rule.pattern.test(ncClean) && !/\b(superhero|marvel|spider-?man|avengers|batman)\b/i.test(ncClean)) {
         negativeGenresSet.add(rule.canonical);
       }
@@ -946,8 +1229,7 @@ function extractStructuredFeatures(prompt: string) {
   }
 
   // 1b. General Avoidance Language Mechanism -> mapped into negative_themes and negative_keywords
-  // Maps avoidance language ("no X", "without X", "not X", "nothing X happens", "nobody X", "avoid X", etc.)
-  // into negative_themes using the same negation scoping as negative genres.
+  // Maps avoidance language into negative_themes using the same negation scoping as negative genres.
   const negativeFranchisesSet = new Set<string>();
 
   function expandNegativeStemWords(words: string[]): string[] {
@@ -956,6 +1238,9 @@ function extractStructuredFeatures(prompt: string) {
       const lower = w.toLowerCase().replace(/[^a-z0-9]/g, '');
       if (lower.length <= 1) continue;
       result.add(lower);
+      const norm = normalizeConcept(lower);
+      if (norm) result.add(norm);
+
       if (lower.startsWith('murder')) {
         result.add('murder');
         result.add('murderer');
@@ -985,23 +1270,34 @@ function extractStructuredFeatures(prompt: string) {
       } else if (lower.startsWith('abus')) {
         result.add('abuse');
         result.add('abusive');
+      } else if (lower.startsWith('scare') || lower.startsWith('scary')) {
+        result.add('scare');
+        result.add('scary');
+        result.add('jump scare');
+      } else if (lower.startsWith('blood')) {
+        result.add('blood');
+        result.add('bloody');
+        result.add('bloodshed');
+      } else if (lower.startsWith('gor')) {
+        result.add('gore');
+        result.add('gory');
+      } else if (lower.startsWith('gun') || lower.startsWith('shoot')) {
+        result.add('gunfight');
+        result.add('shooting');
+        result.add('gun');
       }
     }
     return Array.from(result);
   }
 
-  const avoidancePattern = /\b(?:(?:where\s+)?(?:nothing|nobody|no\s+one|none)\s+(?:gets?\s+|is\s+|are\s+)?([^,;.!?]+)|without\s+(?:any\s+|too\s+much\s+)?([^,;.!?]+)|(?:avoid|avoiding|do(?:n't|\s+not)\s+want|never)\s+(?:any\s+|stories\s+involving\s+|story\s+involving\s+)?([^,;.!?]+)|not\s+(?:too\s+|a\s+)?([^,;.!?]+)|no\s+([^,;.!?]+)|excluding\s+([^,;.!?]+)|except(?:\s+for)?\s+([^,;.!?]+))\b/gi;
-  let avoidMatch: RegExpExecArray | null;
-  while ((avoidMatch = avoidancePattern.exec(lower)) !== null) {
-    const rawTarget = avoidMatch[1] || avoidMatch[2] || avoidMatch[3] || avoidMatch[4] || avoidMatch[5] || avoidMatch[6] || avoidMatch[7];
-    if (!rawTarget) continue;
-    const cleanTarget = rawTarget.trim()
-      .replace(/^(?:too\s+|any\s+|too\s+much\s+|a\s+|an\s+|the\s+|much\s+|stories\s+involving\s+|story\s+involving\s+)/i, '')
-      .replace(/\s+(?:happens?|movies?|films?|series|shows?)$/i, '')
+  function processNegativeEntity(entityText: string) {
+    const cleanTarget = entityText.trim()
+      .replace(/^(?:too\s+|any\s+|too\s+much\s+|a\s+|an\s+|the\s+|much\s+|stories\s+involving\s+|story\s+involving\s+|where\s+nobody(?:\s+gets|\s+is)?\s+|nobody(?:\s+gets|\s+is)?\s+)/i, '')
+      .replace(/\s+(?:happens?|movies?|films?|series|shows?|scenes?|numbers?|elements?|subplots?)$/i, '')
       .trim();
-    if (!cleanTarget || cleanTarget.length < 2) continue;
+    if (!cleanTarget || cleanTarget.length < 2) return;
 
-    // Check superhero exclusion
+    // Check superhero / franchise exclusion
     if (/\b(superhero|super\s+hero)\b/i.test(cleanTarget)) {
       negativeFranchisesSet.add('Superhero');
       negativeFranchisesSet.add('Marvel');
@@ -1011,107 +1307,83 @@ function extractStructuredFeatures(prompt: string) {
       negativeFranchisesSet.add('Iron Man');
       if (!negativeThemes.includes('superhero')) negativeThemes.push('superhero');
       if (!negativeKeywords.includes('superhero')) negativeKeywords.push('superhero');
-      continue;
+      return;
     } else if (/\bspider-?man\b/i.test(cleanTarget)) {
       negativeFranchisesSet.add('Spider-Man');
-      continue;
+      return;
     } else if (/\bbatman\b/i.test(cleanTarget)) {
       negativeFranchisesSet.add('Batman');
-      continue;
+      return;
     } else if (/\bavengers\b/i.test(cleanTarget)) {
       negativeFranchisesSet.add('Avengers');
-      continue;
+      return;
     } else if (/\biron\s+man\b/i.test(cleanTarget)) {
       negativeFranchisesSet.add('Iron Man');
-      continue;
+      return;
     } else if (/\bmarvel\b/i.test(cleanTarget)) {
       negativeFranchisesSet.add('Marvel');
-      continue;
+      return;
     }
 
     // Check if it's a genre
-    let isGenre = false;
-    for (const rule of GENRE_RULES) {
+    for (const rule of GENRE_FORMAL_RULES) {
       if (rule.pattern.test(cleanTarget) && !/\b(superhero|marvel|spider-?man|avengers|batman)\b/i.test(cleanTarget)) {
         negativeGenresSet.add(rule.canonical);
-        isGenre = true;
-        break;
       }
     }
-    if (isGenre) continue;
 
     // Check if it's a person
-    if (resolveActor(cleanTarget) || resolveDirector(cleanTarget)) continue;
+    if (resolveActor(cleanTarget) || resolveDirector(cleanTarget)) return;
 
-    // Descriptive phrase or theme (e.g. "traumatic", "graphic violence", "depressing", "child abuse", "murdered")
-    const words = cleanTarget.split(/\s+/).filter(w => !STOPWORDS.has(w) && w.length > 1);
-    if (words.length > 0 && words.length <= 6) {
-      if (!negativeThemes.includes(cleanTarget)) {
-        negativeThemes.push(cleanTarget);
+    // Normalize theme against catalog concept vocabulary
+    const normalized = normalizeConcept(cleanTarget);
+    if (normalized && !negativeThemes.includes(normalized)) {
+      negativeThemes.push(normalized);
+    }
+    if (cleanTarget && !negativeThemes.includes(cleanTarget)) {
+      negativeThemes.push(cleanTarget);
+    }
+
+    const words = cleanTarget.split(/[\s,\-/]+/).filter(w => !STOPWORDS.has(w) && w.length > 1);
+    for (const w of words) {
+      const wNorm = normalizeConcept(w);
+      if (wNorm && !negativeThemes.includes(wNorm)) {
+        negativeThemes.push(wNorm);
       }
-      const expandedWords = expandNegativeStemWords(words);
-      for (const w of expandedWords) {
-        if (!negativeKeywords.includes(w)) {
-          negativeKeywords.push(w);
-        }
+      if (!negativeKeywords.includes(w)) {
+        negativeKeywords.push(w);
+      }
+      if (wNorm && !negativeKeywords.includes(wNorm)) {
+        negativeKeywords.push(wNorm);
+      }
+    }
+
+    const expandedWords = expandNegativeStemWords([cleanTarget, ...words]);
+    for (const w of expandedWords) {
+      if (!negativeKeywords.includes(w)) {
+        negativeKeywords.push(w);
       }
     }
   }
 
-  // Also process all negativeClauses through this general mechanism
+  const avoidancePattern = /\b(?:(?:where\s+)?(?:nothing|nobody|no\s+one|none)\s+(?:gets?\s+|is\s+|are\s+)?([^,;.!?]+)|without\s+(?:any\s+|too\s+much\s+)?([^,;.!?]+)|(?:avoid|avoiding|do(?:n't|\s+not)\s+want|never)\s+(?:any\s+|stories\s+involving\s+|story\s+involving\s+)?([^,;.!?]+)|not\s+(?:too\s+|a\s+)?([^,;.!?]+)|no\s+([^,;.!?]+)|excluding\s+([^,;.!?]+)|except(?:\s+for)?\s+([^,;.!?]+))\b/gi;
+  let avoidMatch: RegExpExecArray | null;
+  while ((avoidMatch = avoidancePattern.exec(lower)) !== null) {
+    const rawTarget = avoidMatch[1] || avoidMatch[2] || avoidMatch[3] || avoidMatch[4] || avoidMatch[5] || avoidMatch[6] || avoidMatch[7];
+    if (!rawTarget) continue;
+    const parts = rawTarget.split(/\b(?:and|or)\b|,/).map(s => s.trim()).filter(Boolean);
+    for (const p of parts) {
+      processNegativeEntity(p);
+    }
+  }
+
+  // Also process all negativeClauses through this general concept mechanism
   for (const nc of negativeClauses) {
     const rawEntity = cleanNegativeClauseToEntity(nc);
     if (!rawEntity || rawEntity.length < 2) continue;
-
-    if (/\b(superhero|super\s+hero)\b/i.test(rawEntity)) {
-      negativeFranchisesSet.add('Superhero');
-      negativeFranchisesSet.add('Marvel');
-      negativeFranchisesSet.add('Spider-Man');
-      negativeFranchisesSet.add('Avengers');
-      negativeFranchisesSet.add('Batman');
-      negativeFranchisesSet.add('Iron Man');
-      if (!negativeThemes.includes('superhero')) negativeThemes.push('superhero');
-      if (!negativeKeywords.includes('superhero')) negativeKeywords.push('superhero');
-      continue;
-    } else if (/\bspider-?man\b/i.test(rawEntity)) {
-      negativeFranchisesSet.add('Spider-Man');
-      continue;
-    } else if (/\bbatman\b/i.test(rawEntity)) {
-      negativeFranchisesSet.add('Batman');
-      continue;
-    } else if (/\bavengers\b/i.test(rawEntity)) {
-      negativeFranchisesSet.add('Avengers');
-      continue;
-    } else if (/\biron\s+man\b/i.test(rawEntity)) {
-      negativeFranchisesSet.add('Iron Man');
-      continue;
-    } else if (/\bmarvel\b/i.test(rawEntity)) {
-      negativeFranchisesSet.add('Marvel');
-      continue;
-    }
-
-    let isGenre = false;
-    for (const rule of GENRE_RULES) {
-      if (rule.pattern.test(rawEntity) && !/\b(superhero|marvel|spider-?man|avengers|batman)\b/i.test(rawEntity)) {
-        negativeGenresSet.add(rule.canonical);
-        isGenre = true;
-        break;
-      }
-    }
-    if (isGenre) continue;
-    if (resolveActor(rawEntity) || resolveDirector(rawEntity)) continue;
-
-    const words = rawEntity.split(/\s+/).filter(w => !STOPWORDS.has(w) && w.length > 1);
-    if (words.length > 0 && words.length <= 6) {
-      if (!negativeThemes.includes(rawEntity)) {
-        negativeThemes.push(rawEntity);
-      }
-      const expandedWords = expandNegativeStemWords(words);
-      for (const w of expandedWords) {
-        if (!negativeKeywords.includes(w)) {
-          negativeKeywords.push(w);
-        }
-      }
+    const parts = rawEntity.split(/\b(?:and|or)\b|,/).map(s => s.trim()).filter(Boolean);
+    for (const p of parts) {
+      processNegativeEntity(p);
     }
   }
 
@@ -1429,7 +1701,190 @@ function extractStructuredFeatures(prompt: string) {
     directors: persons.directors,
     actor_match_mode: persons.actor_match_mode,
     unresolved_persons: persons.unresolved_persons || [],
+    resolved_persons: persons.resolved_persons || [],
+    ambiguous_persons: persons.ambiguous_persons || [],
   };
+}
+
+/**
+ * Main parser entry point (async, resolves reference titles against the CineVerse DB).
+ */
+function buildExtractedItems(
+  finalGenres: string[],
+  finalActors: string[],
+  finalDirectors: string[],
+  finalRefTitles: string[],
+  finalThemes: string[],
+  languages: string[],
+  platforms: string[],
+  negativeGenres: string[],
+  negativePersons: string[],
+  negativeTitles: string[],
+  negativeFranchises: string[],
+  negativeThemes: string[],
+  unresolvedRefs: string[],
+  unresolvedPersons: string[],
+  positiveText: string,
+  negativeClauses: string[],
+  fullText: string
+): ExtractedItem[] {
+  const items: ExtractedItem[] = [];
+
+  for (const g of finalGenres) {
+    items.push({
+      raw: g,
+      normalized: g,
+      category: 'genre',
+      polarity: 'positive',
+      evidence: positiveText,
+      confidence: 1.0,
+    });
+  }
+
+  for (const ng of negativeGenres) {
+    items.push({
+      raw: ng,
+      normalized: ng,
+      category: 'genre',
+      polarity: 'negative',
+      evidence: negativeClauses.join('; '),
+      confidence: 1.0,
+    });
+  }
+
+  for (const a of finalActors) {
+    items.push({
+      raw: a,
+      normalized: a,
+      category: 'person',
+      polarity: 'positive',
+      evidence: positiveText,
+      confidence: 1.0,
+    });
+  }
+
+  for (const d of finalDirectors) {
+    items.push({
+      raw: d,
+      normalized: d,
+      category: 'person',
+      polarity: 'positive',
+      evidence: positiveText,
+      confidence: 1.0,
+    });
+  }
+
+  for (const np of negativePersons) {
+    items.push({
+      raw: np,
+      normalized: np,
+      category: 'person',
+      polarity: 'negative',
+      evidence: negativeClauses.join('; '),
+      confidence: 1.0,
+    });
+  }
+
+  for (const rt of finalRefTitles) {
+    items.push({
+      raw: rt,
+      normalized: rt,
+      category: 'title',
+      polarity: 'positive',
+      evidence: positiveText,
+      confidence: 1.0,
+    });
+  }
+
+  for (const nt of negativeTitles) {
+    items.push({
+      raw: nt,
+      normalized: nt,
+      category: 'title',
+      polarity: 'negative',
+      evidence: negativeClauses.join('; '),
+      confidence: 1.0,
+    });
+  }
+
+  for (const nf of negativeFranchises) {
+    items.push({
+      raw: nf,
+      normalized: nf,
+      category: 'franchise',
+      polarity: 'negative',
+      evidence: negativeClauses.join('; '),
+      confidence: 0.9,
+    });
+  }
+
+  for (const t of finalThemes) {
+    items.push({
+      raw: t,
+      normalized: normalizeConcept(t),
+      category: 'theme',
+      polarity: 'positive',
+      evidence: positiveText,
+      confidence: 1.0,
+    });
+  }
+
+  for (const nt of negativeThemes) {
+    items.push({
+      raw: nt,
+      normalized: normalizeConcept(nt),
+      category: 'theme',
+      polarity: 'negative',
+      evidence: negativeClauses.join('; '),
+      confidence: 1.0,
+    });
+  }
+
+  for (const lang of languages) {
+    items.push({
+      raw: lang,
+      normalized: lang,
+      category: 'language',
+      polarity: 'positive',
+      evidence: positiveText,
+      confidence: 1.0,
+    });
+  }
+
+  for (const plat of platforms) {
+    items.push({
+      raw: plat,
+      normalized: plat,
+      category: 'platform',
+      polarity: 'positive',
+      evidence: positiveText,
+      confidence: 1.0,
+    });
+  }
+
+  for (const ur of unresolvedRefs) {
+    items.push({
+      raw: ur,
+      normalized: ur,
+      category: 'title',
+      polarity: 'unresolved',
+      evidence: fullText,
+      confidence: 0.0,
+    });
+  }
+
+  for (const up of unresolvedPersons) {
+    items.push({
+      raw: up,
+      normalized: up,
+      category: 'person',
+      polarity: 'unresolved',
+      evidence: fullText,
+      confidence: 0.0,
+    });
+  }
+
+  return items;
 }
 
 /**
@@ -1439,35 +1894,108 @@ export async function parseCustomPrompt(
   prompt: string,
   titleResolver?: (candidate: string) => Promise<string | null> | string | null
 ): Promise<UserPreferenceProfile> {
+  let requestDbFailed = false;
   if (!personCatalogInitialized) {
-    await initPersonCatalogFromDatabase();
+    try {
+      await initPersonCatalogFromDatabase();
+    } catch (err: any) {
+      console.error('[customPromptParser] Request-time DB person catalog init failed:', err.message);
+      requestDbFailed = true;
+    }
   }
 
   const feat = extractStructuredFeatures(prompt);
 
-  // Reference Title Resolution
+  // Reference Title Resolution & Entity Tracking
   const refCandidate = extractReferenceCandidate(feat.text);
   const referenceTitles: string[] = [];
   const unresolvedReferences: string[] = [];
+  const resolvedEntities: ResolvedEntity[] = [];
+  const ambiguousEntities: AmbiguousEntity[] = [];
 
   if (refCandidate) {
-    let resolvedTitle: string | null = null;
-    if (titleResolver) {
-      resolvedTitle = await titleResolver(refCandidate.candidate);
-    } else {
-      resolvedTitle = await resolveTitleFromDatabase(refCandidate.candidate, feat.type);
-    }
-
-    if (resolvedTitle) {
-      referenceTitles.push(resolvedTitle);
-    } else {
-      // Unresolved reference: never push to themes!
-      unresolvedReferences.push(refCandidate.candidate);
+    const isCandidateInNegation = feat.negativeClauses.some(nc =>
+      nc.toLowerCase().includes(refCandidate.candidate.toLowerCase())
+    );
+    if (!isCandidateInNegation) {
+      if (titleResolver) {
+        let resolvedTitle: string | null = null;
+        try {
+          resolvedTitle = await titleResolver(refCandidate.candidate);
+        } catch (err: any) {
+          console.error('[customPromptParser] Title resolver error:', err.message);
+          requestDbFailed = true;
+        }
+        if (resolvedTitle) {
+          referenceTitles.push(resolvedTitle);
+          resolvedEntities.push({
+            entity_type: 'title',
+            matched_id: null,
+            name: resolvedTitle,
+            match_method: 'exact',
+            confidence: 1.0,
+          });
+        } else {
+          unresolvedReferences.push(refCandidate.candidate);
+        }
+      } else {
+        try {
+          const titleRes = await resolveTitleDetailed(
+            refCandidate.candidate,
+            feat.min_release_year || feat.max_release_year,
+            feat.type
+          );
+          if (titleRes.status === 'resolved' && titleRes.resolved) {
+            referenceTitles.push(titleRes.resolved.title);
+            resolvedEntities.push({
+              entity_type: 'title',
+              matched_id: titleRes.resolved.id,
+              name: titleRes.resolved.title,
+              match_method: titleRes.resolved.method,
+              confidence: titleRes.resolved.confidence,
+            });
+          } else if (titleRes.status === 'ambiguous' && titleRes.candidates) {
+            ambiguousEntities.push({
+              entity_type: 'title',
+              raw_query: refCandidate.candidate,
+              candidates: titleRes.candidates,
+              message: titleRes.message!,
+            });
+          } else {
+            unresolvedReferences.push(refCandidate.candidate);
+          }
+        } catch (err: any) {
+          console.error('[customPromptParser] Database error resolving reference title:', err.message);
+          requestDbFailed = true;
+          unresolvedReferences.push(refCandidate.candidate);
+        }
+      }
     }
   }
 
   // Resolve Negative Entities (franchises, titles, persons)
-  const negEntities = await resolveNegativeEntitiesFromDatabase(feat.negativeClauses);
+  let negEntities: {
+    negative_persons: string[];
+    negative_titles: string[];
+    negative_franchises: string[];
+    unresolved_references: string[];
+    unresolved_persons: string[];
+    low_confidence: boolean;
+  } = {
+    negative_persons: [],
+    negative_titles: [],
+    negative_franchises: [],
+    unresolved_references: [],
+    unresolved_persons: [],
+    low_confidence: false,
+  };
+
+  try {
+    negEntities = await resolveNegativeEntitiesFromDatabase(feat.negativeClauses);
+  } catch (err: any) {
+    console.error('[customPromptParser] Database error resolving negative entities:', err.message);
+    requestDbFailed = true;
+  }
 
   let runtimeRelation: RuntimeRelation = null;
   const hasShorterComp = /\b(shorter|less\s+long|not\s+as\s+long)\b/i.test(feat.lower);
@@ -1493,8 +2021,34 @@ export async function parseCustomPrompt(
     (t) => !feat.negative_keywords.includes(t.toLowerCase()) && !feat.negative_themes.includes(t)
   );
 
-  const finalUnresolvedRefs = Array.from(new Set([...unresolvedReferences, ...negEntities.unresolved_references]));
-  const finalUnresolvedPersons = Array.from(new Set([...feat.unresolved_persons, ...negEntities.unresolved_persons]));
+  const finalNegativeFranchises = Array.from(new Set([...negEntities.negative_franchises, ...feat.negative_franchises]));
+
+  // Phase 1, Step 3: An excluded phrase is never also an unresolved reference or unresolved person.
+  const negativeStrings = new Set<string>([
+    ...feat.negative_genres.map(g => g.toLowerCase()),
+    ...feat.negative_themes.map(t => t.toLowerCase()),
+    ...feat.negative_keywords.map(k => k.toLowerCase()),
+    ...negEntities.negative_titles.map(t => t.toLowerCase()),
+    ...negEntities.negative_persons.map(p => p.toLowerCase()),
+    ...finalNegativeFranchises.map(f => f.toLowerCase()),
+    ...feat.negativeClauses.map(c => cleanNegativeClauseToEntity(c).toLowerCase()),
+  ]);
+
+  const finalUnresolvedRefs = unresolvedReferences.filter(r => {
+    const rLower = r.toLowerCase().trim();
+    for (const neg of negativeStrings) {
+      if (neg.includes(rLower) || rLower.includes(neg)) return false;
+    }
+    return true;
+  });
+
+  const finalUnresolvedPersons = feat.unresolved_persons.filter(p => {
+    const pLower = p.toLowerCase().trim();
+    for (const neg of negativeStrings) {
+      if (neg.includes(pLower) || pLower.includes(neg)) return false;
+    }
+    return true;
+  });
 
   const hasAnyPreference =
     finalGenres.length > 0 ||
@@ -1514,7 +2068,7 @@ export async function parseCustomPrompt(
     feat.negative_themes.length > 0 ||
     negEntities.negative_titles.length > 0 ||
     negEntities.negative_persons.length > 0 ||
-    negEntities.negative_franchises.length > 0;
+    finalNegativeFranchises.length > 0;
 
   const genreContradiction = feat.negative_genres.some((ng) => {
     return GENRE_RULES.some((r) => r.canonical === ng && r.pattern.test(feat.positiveLower));
@@ -1525,7 +2079,60 @@ export async function parseCustomPrompt(
     feat.min_runtime_minutes > feat.max_runtime_minutes;
   const hasContradiction = genreContradiction || runtimeContradiction;
 
-  const lowConfidence = negEntities.low_confidence || negEntities.negative_franchises.length > 0 || !hasAnyPreference || hasContradiction;
+  // Collect ambiguous persons
+  if (feat.ambiguous_persons && feat.ambiguous_persons.length > 0) {
+    for (const ap of feat.ambiguous_persons) {
+      ambiguousEntities.push(ap);
+    }
+  }
+
+  // Collect resolved persons (excluding any purged by negative persons)
+  if (feat.resolved_persons && feat.resolved_persons.length > 0) {
+    for (const rp of feat.resolved_persons) {
+      const isNeg = negEntities.negative_persons.some(
+        np => np.toLowerCase() === rp.name.toLowerCase()
+      );
+      if (!isNeg) {
+        resolvedEntities.push(rp);
+      }
+    }
+  }
+
+  let clarificationNeeded = false;
+  let clarificationMessage: string | undefined = undefined;
+  const clarificationMessages: string[] = [];
+
+  if (ambiguousEntities.length > 0) {
+    clarificationNeeded = true;
+    for (const amb of ambiguousEntities) {
+      clarificationMessages.push(amb.message);
+    }
+  }
+
+  if (finalUnresolvedPersons.length > 0) {
+    clarificationNeeded = true;
+    clarificationMessages.push(
+      `We couldn't find "${finalUnresolvedPersons.join(', ')}" in our cast or crew catalog. Could you check the spelling or provide another name?`
+    );
+  }
+
+  if (finalUnresolvedRefs.length > 0) {
+    clarificationNeeded = true;
+    clarificationMessages.push(
+      `We couldn't find the title "${finalUnresolvedRefs.join(', ')}" in our catalog. Could you check the title or specify another movie/series?`
+    );
+  }
+
+  if (clarificationMessages.length > 0) {
+    clarificationMessage = clarificationMessages.join(' ');
+  }
+
+  const franchiseUnverifiedNote = finalNegativeFranchises.length > 0
+    ? "Franchise membership was not verified against database (no franchise/collection table exists)"
+    : undefined;
+
+  const isSurprisePrompt = /\b(surprise(\s+me)?|random|pick\s+for\s+me)\b/i.test(feat.lower);
+  const lowConfidence = negEntities.low_confidence || finalNegativeFranchises.length > 0 || (!hasAnyPreference && !isSurprisePrompt) || hasContradiction;
 
   const finalGenreSources: Record<string, 'user' | 'quiz' | 'llm'> = {};
   for (const g of finalGenres) {
@@ -1533,6 +2140,26 @@ export async function parseCustomPrompt(
       finalGenreSources[g] = feat.genre_sources[g];
     }
   }
+
+  const extractedItems = buildExtractedItems(
+    finalGenres,
+    finalActors,
+    finalDirectors,
+    finalRefTitles,
+    finalThemes,
+    feat.languages,
+    feat.platforms,
+    feat.negative_genres,
+    negEntities.negative_persons,
+    negEntities.negative_titles,
+    finalNegativeFranchises,
+    feat.negative_themes,
+    finalUnresolvedRefs,
+    finalUnresolvedPersons,
+    feat.positiveText,
+    feat.negativeClauses,
+    feat.text
+  );
 
   return {
     source: 'custom',
@@ -1554,7 +2181,7 @@ export async function parseCustomPrompt(
     negative_keywords: feat.negative_keywords,
     negative_titles: negEntities.negative_titles,
     negative_persons: negEntities.negative_persons,
-    negative_franchises: Array.from(new Set([...negEntities.negative_franchises, ...feat.negative_franchises])),
+    negative_franchises: finalNegativeFranchises,
     unresolved_references: finalUnresolvedRefs,
     unresolved_persons: finalUnresolvedPersons,
     max_runtime_minutes: feat.max_runtime_minutes,
@@ -1566,8 +2193,14 @@ export async function parseCustomPrompt(
     actors: finalActors,
     directors: finalDirectors,
     actor_match_mode: feat.actor_match_mode,
-    is_degraded: isCatalogDegraded || !hasAnyPreference || hasContradiction ? true : undefined,
+    is_degraded: (isCatalogDegraded || requestDbFailed) ? true : undefined,
     low_confidence: lowConfidence ? true : undefined,
+    extracted_items: extractedItems,
+    resolved_entities: resolvedEntities,
+    ambiguous_entities: ambiguousEntities,
+    clarification_needed: clarificationNeeded || undefined,
+    clarification_message: clarificationMessage,
+    franchise_unverified_note: franchiseUnverifiedNote,
   };
 }
 
@@ -1585,17 +2218,31 @@ export function parseCustomPromptSync(
   const refCandidate = extractReferenceCandidate(feat.text);
   const referenceTitles: string[] = [];
   const unresolvedReferences: string[] = [];
+  const resolvedEntities: ResolvedEntity[] = [];
+  const ambiguousEntities: AmbiguousEntity[] = [];
 
   if (refCandidate) {
-    let resolvedTitle: string | null = null;
-    if (syncResolver) {
-      resolvedTitle = syncResolver(refCandidate.candidate);
-    }
+    const isCandidateInNegation = feat.negativeClauses.some(nc =>
+      nc.toLowerCase().includes(refCandidate.candidate.toLowerCase())
+    );
+    if (!isCandidateInNegation) {
+      let resolvedTitle: string | null = null;
+      if (syncResolver) {
+        resolvedTitle = syncResolver(refCandidate.candidate);
+      }
 
-    if (resolvedTitle) {
-      referenceTitles.push(resolvedTitle);
-    } else {
-      unresolvedReferences.push(refCandidate.candidate);
+      if (resolvedTitle) {
+        referenceTitles.push(resolvedTitle);
+        resolvedEntities.push({
+          entity_type: 'title',
+          matched_id: null,
+          name: resolvedTitle,
+          match_method: 'exact',
+          confidence: 1.0,
+        });
+      } else {
+        unresolvedReferences.push(refCandidate.candidate);
+      }
     }
   }
 
@@ -1624,8 +2271,33 @@ export function parseCustomPromptSync(
     (t) => !feat.negative_keywords.includes(t.toLowerCase()) && !feat.negative_themes.includes(t)
   );
 
-  const finalUnresolvedRefs = Array.from(new Set([...unresolvedReferences, ...negEntities.unresolved_references]));
-  const finalUnresolvedPersons = Array.from(new Set([...feat.unresolved_persons, ...negEntities.unresolved_persons]));
+  const finalNegativeFranchises = Array.from(new Set([...negEntities.negative_franchises, ...feat.negative_franchises]));
+
+  const negativeStrings = new Set<string>([
+    ...feat.negative_genres.map(g => g.toLowerCase()),
+    ...feat.negative_themes.map(t => t.toLowerCase()),
+    ...feat.negative_keywords.map(k => k.toLowerCase()),
+    ...negEntities.negative_titles.map(t => t.toLowerCase()),
+    ...negEntities.negative_persons.map(p => p.toLowerCase()),
+    ...finalNegativeFranchises.map(f => f.toLowerCase()),
+    ...feat.negativeClauses.map(c => cleanNegativeClauseToEntity(c).toLowerCase()),
+  ]);
+
+  const finalUnresolvedRefs = unresolvedReferences.filter(r => {
+    const rLower = r.toLowerCase().trim();
+    for (const neg of negativeStrings) {
+      if (neg.includes(rLower) || rLower.includes(neg)) return false;
+    }
+    return true;
+  });
+
+  const finalUnresolvedPersons = feat.unresolved_persons.filter(p => {
+    const pLower = p.toLowerCase().trim();
+    for (const neg of negativeStrings) {
+      if (neg.includes(pLower) || pLower.includes(neg)) return false;
+    }
+    return true;
+  });
 
   const hasAnyPreference =
     finalGenres.length > 0 ||
@@ -1646,7 +2318,7 @@ export function parseCustomPromptSync(
     feat.negative_franchises.length > 0 ||
     negEntities.negative_titles.length > 0 ||
     negEntities.negative_persons.length > 0 ||
-    negEntities.negative_franchises.length > 0;
+    finalNegativeFranchises.length > 0;
 
   const genreContradiction = feat.negative_genres.some((ng) => {
     return GENRE_RULES.some((r) => r.canonical === ng && r.pattern.test(feat.positiveLower));
@@ -1657,7 +2329,60 @@ export function parseCustomPromptSync(
     feat.min_runtime_minutes > feat.max_runtime_minutes;
   const hasContradiction = genreContradiction || runtimeContradiction;
 
-  const lowConfidence = negEntities.low_confidence || negEntities.negative_franchises.length > 0 || feat.negative_franchises.length > 0 || !hasAnyPreference || hasContradiction;
+  // Collect ambiguous persons
+  if (feat.ambiguous_persons && feat.ambiguous_persons.length > 0) {
+    for (const ap of feat.ambiguous_persons) {
+      ambiguousEntities.push(ap);
+    }
+  }
+
+  // Collect resolved persons (excluding any purged by negative persons)
+  if (feat.resolved_persons && feat.resolved_persons.length > 0) {
+    for (const rp of feat.resolved_persons) {
+      const isNeg = negEntities.negative_persons.some(
+        np => np.toLowerCase() === rp.name.toLowerCase()
+      );
+      if (!isNeg) {
+        resolvedEntities.push(rp);
+      }
+    }
+  }
+
+  let clarificationNeeded = false;
+  let clarificationMessage: string | undefined = undefined;
+  const clarificationMessages: string[] = [];
+
+  if (ambiguousEntities.length > 0) {
+    clarificationNeeded = true;
+    for (const amb of ambiguousEntities) {
+      clarificationMessages.push(amb.message);
+    }
+  }
+
+  if (finalUnresolvedPersons.length > 0) {
+    clarificationNeeded = true;
+    clarificationMessages.push(
+      `We couldn't find "${finalUnresolvedPersons.join(', ')}" in our cast or crew catalog. Could you check the spelling or provide another name?`
+    );
+  }
+
+  if (finalUnresolvedRefs.length > 0) {
+    clarificationNeeded = true;
+    clarificationMessages.push(
+      `We couldn't find the title "${finalUnresolvedRefs.join(', ')}" in our catalog. Could you check the title or specify another movie/series?`
+    );
+  }
+
+  if (clarificationMessages.length > 0) {
+    clarificationMessage = clarificationMessages.join(' ');
+  }
+
+  const franchiseUnverifiedNote = finalNegativeFranchises.length > 0
+    ? "Franchise membership was not verified against database (no franchise/collection table exists)"
+    : undefined;
+
+  const isSurprisePrompt = /\b(surprise(\s+me)?|random|pick\s+for\s+me)\b/i.test(feat.lower);
+  const lowConfidence = negEntities.low_confidence || finalNegativeFranchises.length > 0 || (!hasAnyPreference && !isSurprisePrompt) || hasContradiction;
 
   const finalGenreSources: Record<string, 'user' | 'quiz' | 'llm'> = {};
   for (const g of finalGenres) {
@@ -1665,6 +2390,26 @@ export function parseCustomPromptSync(
       finalGenreSources[g] = feat.genre_sources[g];
     }
   }
+
+  const extractedItems = buildExtractedItems(
+    finalGenres,
+    finalActors,
+    finalDirectors,
+    finalRefTitles,
+    finalThemes,
+    feat.languages,
+    feat.platforms,
+    feat.negative_genres,
+    negEntities.negative_persons,
+    negEntities.negative_titles,
+    finalNegativeFranchises,
+    feat.negative_themes,
+    finalUnresolvedRefs,
+    finalUnresolvedPersons,
+    feat.positiveText,
+    feat.negativeClauses,
+    feat.text
+  );
 
   return {
     source: 'custom',
@@ -1686,7 +2431,7 @@ export function parseCustomPromptSync(
     negative_keywords: feat.negative_keywords,
     negative_titles: negEntities.negative_titles,
     negative_persons: negEntities.negative_persons,
-    negative_franchises: Array.from(new Set([...negEntities.negative_franchises, ...feat.negative_franchises])),
+    negative_franchises: finalNegativeFranchises,
     unresolved_references: finalUnresolvedRefs,
     unresolved_persons: finalUnresolvedPersons,
     max_runtime_minutes: feat.max_runtime_minutes,
@@ -1698,7 +2443,13 @@ export function parseCustomPromptSync(
     actors: finalActors,
     directors: finalDirectors,
     actor_match_mode: feat.actor_match_mode,
-    is_degraded: isCatalogDegraded || !hasAnyPreference || hasContradiction ? true : undefined,
+    is_degraded: isCatalogDegraded ? true : undefined,
     low_confidence: lowConfidence ? true : undefined,
+    extracted_items: extractedItems,
+    resolved_entities: resolvedEntities,
+    ambiguous_entities: ambiguousEntities,
+    clarification_needed: clarificationNeeded || undefined,
+    clarification_message: clarificationMessage,
+    franchise_unverified_note: franchiseUnverifiedNote,
   };
 }

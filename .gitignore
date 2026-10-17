@@ -8,6 +8,10 @@ build/
 .DS_Store
 Thumbs.db
 
+# Database dumps and backups
+*.sql
+*.dump
+
 # Large generated binary datasets and embeddings (runtime generated/downloaded)
 data/
 backend/data/

@@ -72,6 +72,21 @@ export class PreferenceProfileBuilder {
   ): Promise<UserPreferenceProfile> {
     const deterministicProfile = await parseCustomPrompt(prompt, titleResolver);
 
+    // If deterministic parser determined clarification is needed, return immediately (do not guess)
+    if (deterministicProfile.clarification_needed) {
+      return deterministicProfile;
+    }
+
+    // Pure surprise me requests don't need LLM
+    const isSurprise = Boolean(
+      deterministicProfile.free_text &&
+      /\b(surprise(\s+me)?|random|pick\s+for\s+me)\b/i.test(deterministicProfile.free_text) &&
+      !deterministicProfile.low_confidence
+    );
+    if (isSurprise) {
+      return deterministicProfile;
+    }
+
     // Fast-path: only invoke LLM if available and assistance is warranted
     if (enableLlmFallback && isLlmAvailable()) {
       const hasAvoidanceOrNegation = /\b(where\s+nobody|where\s+no\s+one|where\s+nothing|where\s+none|nobody|no\s+one|nothing|without|avoid|avoiding|never|no|not|except|excluding|don't\s+want|do\s+not\s+want)\b/i.test(prompt);

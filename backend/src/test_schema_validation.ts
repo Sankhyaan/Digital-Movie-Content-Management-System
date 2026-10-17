@@ -48,9 +48,11 @@ function createBaseProfile(): UserPreferenceProfile {
 }
 
 import { CandidateRetriever } from './services/recommendation/candidateRetriever';
+import { initPersonCatalogFromDatabase } from './services/customPromptParser';
 import { pool } from './db/connection';
 
 async function runSchemaTests() {
+  await initPersonCatalogFromDatabase();
   await CandidateRetriever.getInstance().init();
   console.log('================================================================');
   console.log('   RUNNING FORMAL SCHEMA VALIDATION & ENTITY RESOLUTION TESTS   ');
