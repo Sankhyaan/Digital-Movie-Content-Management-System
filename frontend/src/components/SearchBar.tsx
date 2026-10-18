@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 interface SearchBarProps {
@@ -10,18 +10,23 @@ export default function SearchBar({ initialQuery = '', large = false }: SearchBa
   const [query, setQuery] = useState(initialQuery);
   const navigate = useNavigate();
 
+  useEffect(() => {
+    setQuery(initialQuery || '');
+  }, [initialQuery]);
+
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if (query.trim()) {
-      navigate(`/search?q=${encodeURIComponent(query.trim())}`);
+    const clean = query.trim();
+    if (clean) {
+      navigate(`/search?q=${encodeURIComponent(clean)}`);
     }
   };
 
   return (
-    <form onSubmit={handleSubmit} className="w-full" id="search-bar-form">
+    <form onSubmit={handleSubmit} className="w-full" id="search-bar-form" role="search">
       <div className="relative">
         <svg
-          className="absolute top-1/2 -translate-y-1/2 w-5 h-5"
+          className="absolute top-1/2 -translate-y-1/2 w-5 h-5 pointer-events-none"
           style={{ left: large ? '20px' : '16px', color: 'var(--text-muted)' }}
           fill="none"
           stroke="currentColor"
@@ -34,6 +39,7 @@ export default function SearchBar({ initialQuery = '', large = false }: SearchBa
           value={query}
           onChange={(e: React.ChangeEvent<HTMLInputElement>) => setQuery(e.target.value)}
           placeholder="Search for movies, genres, actors..."
+          aria-label="Search for movies, genres, actors"
           className="w-full outline-none transition-all"
           style={{
             padding: large ? '18px 20px 18px 52px' : '14px 16px 14px 44px',
@@ -57,12 +63,13 @@ export default function SearchBar({ initialQuery = '', large = false }: SearchBa
           <button
             type="button"
             onClick={() => setQuery('')}
-            className="absolute right-4 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full flex items-center justify-center"
+            aria-label="Clear search"
+            title="Clear search"
+            className="absolute right-4 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full flex items-center justify-center hover:text-white hover:bg-white/10 active:scale-90 transition-all cursor-pointer"
             style={{
               background: 'var(--bg-tertiary)',
               color: 'var(--text-muted)',
               border: 'none',
-              cursor: 'pointer',
               fontSize: '0.75rem',
             }}
           >
