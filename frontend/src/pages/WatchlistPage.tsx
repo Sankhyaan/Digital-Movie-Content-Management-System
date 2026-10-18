@@ -5,6 +5,8 @@ import MovieCard from '../components/MovieCard';
 
 export default function WatchlistPage() {
   const { watchlist } = useWatchlist();
+  const items = Array.isArray(watchlist) ? watchlist : [];
+  const count = items.length;
 
   return (
     <div id="watchlist-page" style={{ display: 'flex', flexDirection: 'column', gap: '32px', maxWidth: '1450px', width: '100%', margin: '0 auto', flex: 1 }}>
@@ -13,14 +15,14 @@ export default function WatchlistPage() {
           My <span className="text-sky-400">Watchlist</span>
         </h1>
         <p style={{ color: '#64748b', fontSize: '0.875rem' }}>
-          {watchlist.length} titles saved
+          {count} {count === 1 ? 'title' : 'titles'} saved
         </p>
       </div>
 
-      {watchlist.length > 0 ? (
+      {count > 0 ? (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '22px' }}>
-          {watchlist.map((movie, index) => (
-            <MovieCard key={movie.contentId} movie={movie} index={index} />
+          {items.map((movie, index) => (
+            <MovieCard key={movie.contentId || index} movie={movie} index={index} />
           ))}
         </div>
       ) : (
@@ -37,6 +39,7 @@ export default function WatchlistPage() {
               justifyContent: 'center',
               marginBottom: '20px',
             }}
+            className="shadow-lg shadow-sky-500/10"
           >
             <span style={{ fontSize: '26px' }}>🎬</span>
           </div>
@@ -60,9 +63,8 @@ export default function WatchlistPage() {
               display: 'inline-flex',
               alignItems: 'center',
               justifyContent: 'center',
-              transition: 'all 0.2s',
             }}
-            className="hover:scale-105 transition-transform"
+            className="hover:scale-105 active:scale-95 transition-all duration-200 cursor-pointer shadow-lg hover:shadow-sky-500/30"
           >
             Explore Titles
           </Link>
