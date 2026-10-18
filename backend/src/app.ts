@@ -52,5 +52,19 @@ export function createApp(repository: IMovieRepository): Application {
     });
   });
 
+  // ── 404 Fallback for Unmatched API Endpoints ────────────────────────────
+  app.use('/api', (_req, res) => {
+    res.status(404).json({ success: false, error: 'API endpoint not found' });
+  });
+
+  // ── Global Error Handler Middleware ─────────────────────────────────────
+  app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+    console.error('Unhandled server error:', err);
+    res.status(err.status || 500).json({
+      success: false,
+      error: err.message || 'Internal server error',
+    });
+  });
+
   return app;
 }
