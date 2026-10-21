@@ -16,10 +16,15 @@ export function getSavedCineMatch(): SavedCineMatchState | null {
     const raw = sessionStorage.getItem(CINEMATCH_STORAGE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
-    if (parsed && Array.isArray(parsed.recommendations) && parsed.profile) {
+    if (
+      parsed &&
+      Array.isArray(parsed.recommendations) &&
+      parsed.recommendations.length > 0 &&
+      parsed.profile
+    ) {
       return parsed;
     }
-    // Clean up invalid or corrupted structure
+    // Clean up empty, invalid or corrupted structure
     sessionStorage.removeItem(CINEMATCH_STORAGE_KEY);
     return null;
   } catch {
@@ -32,6 +37,14 @@ export function getSavedCineMatch(): SavedCineMatchState | null {
  */
 export function saveCineMatch(state: SavedCineMatchState): void {
   try {
+    if (
+      !state ||
+      !Array.isArray(state.recommendations) ||
+      state.recommendations.length === 0
+    ) {
+      clearSavedCineMatch();
+      return;
+    }
     sessionStorage.setItem(CINEMATCH_STORAGE_KEY, JSON.stringify(state));
   } catch (e) {
     console.error('Failed to cache CineMatch state in sessionStorage:', e);

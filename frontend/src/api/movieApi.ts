@@ -88,7 +88,10 @@ export function setCachedData<T>(key: string, data: T, ttl = CACHE_TTL): void {
   const item = { data, expiry: Date.now() + ttl };
   apiMemoryCache.set(key, item);
   try {
-    sessionStorage.setItem('cv_cache_' + key, JSON.stringify(item));
+    const serialized = JSON.stringify(item);
+    if (serialized.length < 500000) {
+      sessionStorage.setItem('cv_cache_' + key, serialized);
+    }
   } catch {}
 }
 
