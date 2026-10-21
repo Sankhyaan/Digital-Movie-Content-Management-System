@@ -21,6 +21,8 @@ function App() {
               <Route path="/movie/:id" element={<MovieDetailPage />} />
               <Route path="/search" element={<SearchPage />} />
               <Route path="/watchlist" element={<WatchlistPage />} />
+              {/* Fallback unknown routes gracefully to Home */}
+              <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
           </div>
         </AppLayout>
