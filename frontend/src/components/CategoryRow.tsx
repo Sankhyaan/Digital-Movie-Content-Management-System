@@ -26,7 +26,11 @@ export default function CategoryRow({
     });
   };
 
-  if (movies.length === 0) return null;
+  const validMovies = Array.isArray(movies)
+    ? movies.filter((m): m is Movie => Boolean(m && m.contentId != null))
+    : [];
+
+  if (validMovies.length === 0) return null;
 
   return (
     <section
@@ -63,9 +67,9 @@ export default function CategoryRow({
           <h2 className="font-outfit font-extrabold text-xl md:text-2xl text-white tracking-tight">
             {title}
           </h2>
-          {movies.length > 0 && (
+          {validMovies.length > 0 && (
             <span className="text-[0.68rem] font-bold px-2 py-0.5 rounded-full bg-white/[0.06] border border-white/[0.08] text-neutral-400">
-              {movies.length}
+              {validMovies.length}
             </span>
           )}
         </div>
@@ -87,6 +91,7 @@ export default function CategoryRow({
               onClick={() => scroll('left')}
               className="w-8 h-8 rounded-full bg-white/[0.05] hover:bg-white/[0.12] border border-white/[0.08] hover:border-sky-500/40 text-neutral-400 hover:text-sky-300 active:scale-90 flex items-center justify-center transition-all duration-200 cursor-pointer shadow-sm hover:shadow-sky-500/20"
               aria-label={`Scroll ${title} left`}
+              title={`Scroll ${title} left`}
             >
               <IconChevronLeft size={16} />
             </button>
@@ -95,6 +100,7 @@ export default function CategoryRow({
               onClick={() => scroll('right')}
               className="w-8 h-8 rounded-full bg-white/[0.05] hover:bg-white/[0.12] border border-white/[0.08] hover:border-sky-500/40 text-neutral-400 hover:text-sky-300 active:scale-90 flex items-center justify-center transition-all duration-200 cursor-pointer shadow-sm hover:shadow-sky-500/20"
               aria-label={`Scroll ${title} right`}
+              title={`Scroll ${title} right`}
             >
               <IconChevronRight size={16} />
             </button>
@@ -118,9 +124,9 @@ export default function CategoryRow({
           msOverflowStyle: 'none',
         }}
       >
-        {movies.map((movie, i) => (
+        {validMovies.map((movie, i) => (
           <div
-            key={movie.contentId}
+            key={`${movie.contentId}-${i}`}
             className="shrink-0 snap-start"
             style={{ width: '190px', flexShrink: 0 }}
           >
