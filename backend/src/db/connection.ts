@@ -5,10 +5,13 @@
 // Credentials are loaded from the .env file.
 // =============================================================================
 
+import path from 'path';
 import mysql from 'mysql2/promise';
 import dotenv from 'dotenv';
 
 dotenv.config();
+dotenv.config({ path: path.resolve(__dirname, '../../.env') });
+dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
 
 export const pool = mysql.createPool({
   host:     process.env.DB_HOST     || 'localhost',

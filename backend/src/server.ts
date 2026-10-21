@@ -4,8 +4,11 @@
 // This is where the entire application is wired together.
 // =============================================================================
 
+import path from 'path';
 import dotenv from 'dotenv';
-dotenv.config();  // ← Must be first, before any other imports that read env vars
+dotenv.config();
+dotenv.config({ path: path.resolve(__dirname, '../.env') });
+dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
 import { createApp } from './app';
 import { SQLMovieRepository } from './repositories/SQLMovieRepository';
