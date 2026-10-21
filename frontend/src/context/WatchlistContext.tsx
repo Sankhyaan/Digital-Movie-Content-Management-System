@@ -35,15 +35,18 @@ const ACTIONS = {
 // ── Reducer ───────────────────────────────────────────────────────────────
 
 function watchlistReducer(state: Movie[], action: Action): Movie[] {
+  const currentList = Array.isArray(state) ? state : [];
   switch (action.type) {
     case ACTIONS.ADD: {
-      if (state.some((m) => m.contentId === action.payload.contentId)) return state;
-      return [...state, action.payload];
+      if (!action.payload || action.payload.contentId == null) return currentList;
+      if (currentList.some((m) => m && m.contentId === action.payload.contentId)) return currentList;
+      return [...currentList, action.payload];
     }
     case ACTIONS.REMOVE:
-      return state.filter((m) => m.contentId !== action.payload);
+      if (action.payload == null) return currentList;
+      return currentList.filter((m) => m && m.contentId !== action.payload);
     default:
-      return state;
+      return currentList;
   }
 }
 
@@ -52,7 +55,10 @@ function watchlistReducer(state: Movie[], action: Action): Movie[] {
 function initWatchlist(): Movie[] {
   try {
     const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved) return JSON.parse(saved) as Movie[];
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed)) return parsed as Movie[];
+    }
   } catch (err) {
     console.error('Failed to load watchlist:', err);
   }
@@ -71,27 +77,30 @@ export function WatchlistProvider({ children }: WatchlistProviderProps) {
   // Save to localStorage on every change
   useEffect(() => {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(watchlist));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(watchlist || []));
     } catch (err) {
       console.error('Failed to save watchlist:', err);
     }
   }, [watchlist]);
 
   const addToWatchlist = (movie: Movie) => {
+    if (!movie || movie.contentId == null) return;
     dispatch({ type: ACTIONS.ADD, payload: movie });
   };
 
   const removeFromWatchlist = (movieId: number) => {
+    if (movieId == null) return;
     dispatch({ type: ACTIONS.REMOVE, payload: movieId });
   };
 
   const isInWatchlist = (movieId: number): boolean => {
-    return watchlist.some((m) => m.contentId === movieId);
+    if (movieId == null || !Array.isArray(watchlist)) return false;
+    return watchlist.some((m) => m && m.contentId === movieId);
   };
 
   return (
     <WatchlistContext.Provider
-      value={{ watchlist, addToWatchlist, removeFromWatchlist, isInWatchlist }}
+      value={{ watchlist: watchlist || [], addToWatchlist, removeFromWatchlist, isInWatchlist }}
     >
       {children}
     </WatchlistContext.Provider>
