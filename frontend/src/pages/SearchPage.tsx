@@ -301,7 +301,12 @@ export default function SearchPage() {
   }, [query]);
 
   useEffect(() => {
-    fetchGenres().then(setGenres).catch(console.error);
+    fetchGenres()
+      .then((data) => setGenres(Array.isArray(data) ? data : []))
+      .catch((err) => {
+        console.error('Failed to load genres:', err);
+        setGenres([]);
+      });
   }, []);
 
   useEffect(() => {
@@ -316,11 +321,15 @@ export default function SearchPage() {
         if (type) filters.type = type;
         const res = await fetchMoviesWithCount(filters);
         if (active) {
-          setMovies(res.movies);
-          setTotalCount(res.total);
+          setMovies(Array.isArray(res?.movies) ? res.movies : []);
+          setTotalCount(typeof res?.total === 'number' ? res.total : 0);
         }
       } catch (error) {
         console.error('Search failed:', error);
+        if (active) {
+          setMovies([]);
+          setTotalCount(0);
+        }
       } finally {
         if (active) {
           setLoading(false);
@@ -346,7 +355,9 @@ export default function SearchPage() {
       if (year) filters.year = year;
       if (type) filters.type = type;
       const res = await fetchMoviesWithCount(filters, true);
-      setMovies((prev) => [...prev, ...res.movies]);
+      if (Array.isArray(res?.movies) && res.movies.length > 0) {
+        setMovies((prev) => [...prev, ...res.movies]);
+      }
     } catch (e) {
       console.error('Failed to load more:', e);
     } finally {
