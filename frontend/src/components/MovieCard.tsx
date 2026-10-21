@@ -12,16 +12,26 @@ interface MovieCardProps {
 
 const MovieCard = React.memo(function MovieCard({ movie, index = 0 }: MovieCardProps) {
   const { isInWatchlist, addToWatchlist, removeFromWatchlist } = useWatchlist();
+
+  if (!movie || movie.contentId == null) {
+    return null;
+  }
+
   const inWatchlist = isInWatchlist(movie.contentId);
 
   const toggle = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
+    if (movie.contentId == null) return;
     inWatchlist ? removeFromWatchlist(movie.contentId) : addToWatchlist(movie);
   };
 
-  const src = posterUrl(movie.posterPath, movie.title);
-  const rating = movie.rating != null ? Number(movie.rating).toFixed(1) : null;
+  const title = movie.title || 'Movie';
+  const src = posterUrl(movie.posterPath, title);
+  const rating =
+    movie.rating != null && !isNaN(Number(movie.rating))
+      ? Number(movie.rating).toFixed(1)
+      : null;
   const year = movie.releaseYear ?? '';
   const genre = movie.genres?.[0] ?? '';
 
@@ -36,12 +46,14 @@ const MovieCard = React.memo(function MovieCard({ movie, index = 0 }: MovieCardP
       <div className="relative aspect-[2/3] w-full rounded-2xl overflow-hidden bg-[#0a0e17] border border-white/[0.07] group-hover:border-sky-500/50 group-hover:shadow-2xl group-hover:shadow-sky-500/20 group-hover:-translate-y-1.5 transition-all duration-300 ease-out before:absolute before:inset-0 before:bg-gradient-to-b before:from-white/10 before:via-transparent before:to-transparent before:opacity-0 group-hover:before:opacity-100 before:transition-opacity before:duration-300 before:pointer-events-none before:z-10">
         <img
           src={src}
-          alt={movie.title}
+          alt={title}
           loading="lazy"
           className="w-full h-full object-cover transition-transform duration-700 ease-[cubic-bezier(0.25,1,0.5,1)] group-hover:scale-105"
           onError={(e) => {
-            (e.target as HTMLImageElement).src = `https://placehold.co/300x450/06080e/0ea5e9?text=${encodeURIComponent(
-              movie.title
+            const target = e.currentTarget;
+            target.onerror = null;
+            target.src = `https://placehold.co/300x450/06080e/0ea5e9?text=${encodeURIComponent(
+              title
             )}`;
           }}
         />
