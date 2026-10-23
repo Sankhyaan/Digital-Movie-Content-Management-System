@@ -13,8 +13,10 @@ Thumbs.db
 *.dump
 
 # Large generated binary datasets and embeddings (runtime generated/downloaded)
-data/
-backend/data/
+data/*
+!data/movie_embeddings.bin
+backend/data/*
+!backend/data/movie_dna.json
 
 # Audit logs, scratch files, and evaluation outputs
 audit/

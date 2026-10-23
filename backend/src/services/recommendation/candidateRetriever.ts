@@ -69,8 +69,12 @@ export class CandidateRetriever {
       console.warn('[CandidateRetriever] Failed to load MovieDNA from database:', err?.message);
     }
 
-    // Always fall back to JSON file if database returned 0 rows or failed
+    // Fall back to JSON file if database returned 0 rows or failed
     await this.loadFromFileFallback();
+    if (this.loaded && this.dnaCache.length > 0) return;
+
+    // Tertiary fallback: synthesize MovieDNA directly from MySQL content table
+    await this.loadFromDatabaseCoreTables();
   }
 
   /**
@@ -97,7 +101,7 @@ export class CandidateRetriever {
       }
 
       if (!jsonFilePath) {
-        console.error('[CandidateRetriever] movie_dna.json not found in filesystem.');
+        console.warn('[CandidateRetriever] movie_dna.json not found in filesystem.');
         return;
       }
 
@@ -136,6 +140,104 @@ export class CandidateRetriever {
       console.log(`[CandidateRetriever] Fallback successfully loaded and cached ${this.dnaCache.length} MovieDNA records in memory.`);
     } catch (err) {
       console.error('[CandidateRetriever] Failed to load MovieDNA from JSON fallback:', err);
+    }
+  }
+
+  /**
+   * Tertiary fallback: constructs MovieDNA directly from MySQL content and relational tables
+   * if content_dna table is missing/empty and JSON file is absent.
+   */
+  private async loadFromDatabaseCoreTables(): Promise<void> {
+    try {
+      console.log('[CandidateRetriever] Synthesizing MovieDNA directly from content table...');
+      const [rows]: any = await pool.query(`
+        SELECT c.content_id, c.title, c.type, c.description, c.release_year, c.rating, c.poster_path,
+               m.duration, s.total_seasons
+        FROM content c
+        LEFT JOIN movie m ON c.content_id = m.content_id
+        LEFT JOIN series s ON c.content_id = s.content_id
+        ORDER BY c.content_id ASC
+      `);
+
+      if (!Array.isArray(rows) || rows.length === 0) {
+        console.warn('[CandidateRetriever] Core content table is also empty.');
+        return;
+      }
+
+      // Fetch genres
+      const genreMap = new Map<number, string[]>();
+      try {
+        const [genreRows]: any = await pool.query(`
+          SELECT cg.content_id, g.genre_name
+          FROM content_genre cg
+          JOIN genre g ON cg.genre_id = g.genre_id
+        `);
+        for (const gr of genreRows) {
+          if (!genreMap.has(gr.content_id)) genreMap.set(gr.content_id, []);
+          genreMap.get(gr.content_id)!.push(gr.genre_name);
+        }
+      } catch (e) {}
+
+      // Fetch directors
+      const dirMap = new Map<number, string[]>();
+      try {
+        const [dirRows]: any = await pool.query(`
+          SELECT cd.content_id, d.name
+          FROM content_director cd
+          JOIN director d ON cd.director_id = d.director_id
+        `);
+        for (const dr of dirRows) {
+          if (!dirMap.has(dr.content_id)) dirMap.set(dr.content_id, []);
+          dirMap.get(dr.content_id)!.push(dr.name);
+        }
+      } catch (e) {}
+
+      // Fetch actors
+      const actMap = new Map<number, string[]>();
+      try {
+        const [actRows]: any = await pool.query(`
+          SELECT ca.content_id, a.name
+          FROM content_actor ca
+          JOIN actor a ON ca.actor_id = a.actor_id
+        `);
+        for (const ar of actRows) {
+          if (!actMap.has(ar.content_id)) actMap.set(ar.content_id, []);
+          actMap.get(ar.content_id)!.push(ar.name);
+        }
+      } catch (e) {}
+
+      this.dnaCache = [];
+      this.dnaMap.clear();
+
+      for (const r of rows) {
+        const item: any = {
+          content_id: r.content_id,
+          title: r.title,
+          type: r.type || 'Movie',
+          description: r.description || null,
+          release_year: r.release_year || null,
+          rating: r.rating ? Number(r.rating) : null,
+          runtime: r.duration ? Number(r.duration) : null,
+          genres: genreMap.get(r.content_id) || [],
+          languages: [],
+          platforms: [],
+          actors: actMap.get(r.content_id) || [],
+          directors: dirMap.get(r.content_id) || [],
+          themes: [],
+          cinematic_vibe: [],
+          quality_tier: (r.rating && r.rating >= 7.5) ? 'high' : (r.rating && r.rating >= 6.0) ? 'medium' : 'low',
+          era_bucket: (r.release_year && r.release_year >= 2020) ? 'recent' : (r.release_year && r.release_year >= 2000) ? 'modern' : 'classic',
+          poster_path: r.poster_path || null,
+        };
+
+        this.dnaCache.push(item as MovieDNA);
+        this.dnaMap.set(item.content_id, item as MovieDNA);
+      }
+
+      this.loaded = true;
+      console.log(`[CandidateRetriever] Successfully synthesized and cached ${this.dnaCache.length} MovieDNA records from content table.`);
+    } catch (err: any) {
+      console.error('[CandidateRetriever] Failed to synthesize MovieDNA from content table:', err?.message);
     }
   }
 

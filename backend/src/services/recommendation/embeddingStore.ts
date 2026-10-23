@@ -36,12 +36,27 @@ export class EmbeddingStore {
     if (this.loaded) return true;
 
     try {
-      if (!fs.existsSync(this.binPath)) {
-        console.warn(`[EmbeddingStore] Binary cache not found at: ${this.binPath}`);
+      const candidatePaths = [
+        path.resolve(process.cwd(), 'data/movie_embeddings.bin'),
+        path.resolve(process.cwd(), 'backend/data/movie_embeddings.bin'),
+        path.resolve(process.cwd(), '../data/movie_embeddings.bin'),
+        path.resolve(__dirname, '../../../../data/movie_embeddings.bin'),
+        path.resolve(__dirname, '../../../data/movie_embeddings.bin'),
+      ];
+      let binFile: string | null = null;
+      for (const p of candidatePaths) {
+        if (fs.existsSync(p)) {
+          binFile = p;
+          break;
+        }
+      }
+
+      if (!binFile) {
+        console.warn(`[EmbeddingStore] Binary cache not found in candidate paths.`);
         return false;
       }
 
-      const buffer = fs.readFileSync(this.binPath);
+      const buffer = fs.readFileSync(binFile);
       if (buffer.length < 12) {
         console.error('[EmbeddingStore] Binary file too small to be valid.');
         return false;
