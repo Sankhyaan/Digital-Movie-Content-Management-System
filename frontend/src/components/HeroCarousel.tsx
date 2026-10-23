@@ -18,12 +18,14 @@ export default function HeroCarousel({ movies = [] }: HeroCarouselProps) {
   const [current, setCurrent] = useState(0);
   const [fading, setFading] = useState(false);
   const [showTrailer, setShowTrailer] = useState(false);
+  const fadeTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const goTo = useCallback(
     (idx: number) => {
       if (fading || movies.length === 0) return;
       setFading(true);
-      setTimeout(() => {
+      if (fadeTimerRef.current) clearTimeout(fadeTimerRef.current);
+      fadeTimerRef.current = setTimeout(() => {
         setCurrent(idx);
         setFading(false);
       }, 350);
@@ -42,25 +44,39 @@ export default function HeroCarousel({ movies = [] }: HeroCarouselProps) {
   }, [current, movies.length, goTo]);
 
   useEffect(() => {
+    return () => {
+      if (fadeTimerRef.current) clearTimeout(fadeTimerRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
     if (movies.length <= 1 || showTrailer) return;
     const t = setInterval(next, 7000);
     return () => clearInterval(t);
   }, [next, movies.length, showTrailer]);
 
-  // Handle escape key to close trailer modal
+  // Handle keyboard navigation: escape to close modal, arrows to navigate slides
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setShowTrailer(false);
+      if (e.key === 'Escape' && showTrailer) {
+        setShowTrailer(false);
+        return;
+      }
+      if (!showTrailer && movies.length > 1) {
+        if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+        if (e.key === 'ArrowRight') next();
+        if (e.key === 'ArrowLeft') prev();
+      }
     };
+    window.addEventListener('keydown', handleKey);
     if (showTrailer) {
-      window.addEventListener('keydown', handleKey);
       document.body.style.overflow = 'hidden';
     }
     return () => {
       window.removeEventListener('keydown', handleKey);
       document.body.style.overflow = '';
     };
-  }, [showTrailer]);
+  }, [showTrailer, movies.length, next, prev]);
 
   // Reset to first slide whenever movies list changes (e.g. fresh random 10)
   useEffect(() => {
@@ -73,7 +89,8 @@ export default function HeroCarousel({ movies = [] }: HeroCarouselProps) {
     );
   }
 
-  const movie = movies[current] || movies[0];
+  const safeIndex = current >= 0 && current < movies.length ? current : 0;
+  const movie = movies[safeIndex] || movies[0];
   if (!movie) {
     return (
       <div className="w-full h-[450px] md:h-[510px] rounded-3xl skeleton" />
