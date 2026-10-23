@@ -195,6 +195,11 @@ export class HybridScorer {
     // Apply negative penalty
     composite = Math.max(0, Math.min(1, composite - negative_penalty));
 
+    // Quality assurance: penalize any candidate missing a poster path so complete media titles rank first
+    if (!(dna as any).poster_path) {
+      composite *= 0.70;
+    }
+
     return {
       content_id: dna.content_id,
       dna,
