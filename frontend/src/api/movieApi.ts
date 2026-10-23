@@ -218,6 +218,7 @@ export interface Movie {
   contentId: number;
   title: string;
   type: 'Movie' | 'Series';
+  description?: string | null;
   posterPath?: string;
   backdropPath?: string | null;
   trailerKey?: string | null;

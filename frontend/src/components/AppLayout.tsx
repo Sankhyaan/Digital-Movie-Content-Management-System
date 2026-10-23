@@ -16,6 +16,14 @@ interface AppLayoutProps {
   children: React.ReactNode;
 }
 
+interface NavItem {
+  to: string;
+  label: string;
+  icon: React.ComponentType<{ size?: number; className?: string }>;
+  highlight?: boolean;
+  count?: number;
+}
+
 export default function AppLayout({ children }: AppLayoutProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -23,17 +31,17 @@ export default function AppLayout({ children }: AppLayoutProps) {
   const location = useLocation();
   const isMovieDetail = location.pathname.startsWith('/movie/');
 
-  const discoverNavItems = [
+  const discoverNavItems: NavItem[] = [
     { to: '/home', label: 'Home', icon: IconHome },
     { to: '/search', label: 'Explore', icon: IconCompass },
     { to: '/cinematch', label: 'CineMatch AI', icon: IconSparkles, highlight: true },
   ];
 
-  const libraryNavItems = [
+  const libraryNavItems: NavItem[] = [
     { to: '/watchlist', label: 'Watchlist', icon: IconBookmark, count: watchlist.length },
   ];
 
-  const renderNavLinks = (items: typeof discoverNavItems) => (
+  const renderNavLinks = (items: NavItem[]) => (
     items.map((item) => {
       const Icon = item.icon;
       const isActive = (() => {
