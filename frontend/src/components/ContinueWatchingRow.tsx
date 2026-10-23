@@ -22,9 +22,12 @@ const SIMULATED_PROGRESS_MAP: SimulatedProgress[] = [
 ];
 
 export default function ContinueWatchingRow({ movies = [] }: ContinueWatchingRowProps) {
-  if (movies.length === 0) return null;
+  const validMovies = (Array.isArray(movies) ? movies : []).filter(
+    (m): m is Movie => Boolean(m && m.contentId != null)
+  );
+  if (validMovies.length === 0) return null;
 
-  const items = movies.slice(0, 4);
+  const items = validMovies.slice(0, 4);
 
   return (
     <section className="space-y-3.5" id="continue-watching">
@@ -63,10 +66,15 @@ export default function ContinueWatchingRow({ movies = [] }: ContinueWatchingRow
                   alt={movie.title}
                   className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
                   onError={(e) => {
-                    const target = e.target as HTMLImageElement;
+                    const target = e.currentTarget;
                     if (!target.dataset.fallback) {
                       target.dataset.fallback = 'true';
                       target.src = poster;
+                    } else {
+                      target.onerror = null;
+                      target.src = `https://placehold.co/400x225/070a12/0ea5e9?text=${encodeURIComponent(
+                        movie.title || 'Movie'
+                      )}`;
                     }
                   }}
                 />

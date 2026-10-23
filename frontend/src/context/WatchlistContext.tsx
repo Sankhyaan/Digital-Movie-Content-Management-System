@@ -57,7 +57,11 @@ function initWatchlist(): Movie[] {
     const saved = localStorage.getItem(STORAGE_KEY);
     if (saved) {
       const parsed = JSON.parse(saved);
-      if (Array.isArray(parsed)) return parsed as Movie[];
+      if (Array.isArray(parsed)) {
+        return parsed.filter(
+          (m): m is Movie => Boolean(m && typeof m === 'object' && m.contentId != null)
+        );
+      }
     }
   } catch (err) {
     console.error('Failed to load watchlist:', err);
