@@ -171,16 +171,28 @@ export class MovieController {
         }
       }
 
+      const isGuided = profile.source === 'guided';
+      const isOpenDiscovery = Boolean(
+        profile.free_text &&
+        /\b(surprise(\s+me)?|random|pick\s+for\s+me|good\s+movies?|great\s+movies?|something\s+to\s+watch|what\s+to\s+watch|recommend|top\s+movies?|popular|any(thing)?)\b/i.test(profile.free_text)
+      );
+
       const hasMeaningfulPreferences =
+        isGuided ||
+        isOpenDiscovery ||
         (profile.genres && profile.genres.length > 0) ||
         (profile.actors && profile.actors.length > 0) ||
         (profile.directors && profile.directors.length > 0) ||
         (profile.reference_titles && profile.reference_titles.length > 0) ||
         (profile.themes && profile.themes.length > 0) ||
         (profile.experience && profile.experience.length > 0) ||
+        Boolean(profile.experience_intent) ||
         (profile.languages && profile.languages.length > 0) ||
         (profile.platforms && profile.platforms.length > 0) ||
         (profile.type !== null && profile.type !== undefined) ||
+        (profile.runtime_preference !== null && profile.runtime_preference !== undefined) ||
+        (profile.era_preference !== null && profile.era_preference !== undefined) ||
+        (profile.quality_preference !== null && profile.quality_preference !== undefined) ||
         (profile.min_release_year !== null && profile.min_release_year !== undefined) ||
         (profile.max_release_year !== null && profile.max_release_year !== undefined) ||
         (profile.min_runtime_minutes !== null && profile.min_runtime_minutes !== undefined) ||
@@ -191,7 +203,7 @@ export class MovieController {
         (profile.negative_persons && profile.negative_persons.length > 0) ||
         (profile.negative_franchises && profile.negative_franchises.length > 0);
 
-      if (profile.clarification_needed) {
+      if (profile.clarification_needed && !isGuided && !isOpenDiscovery) {
         res.json({
           success: true,
           count: 0,
@@ -202,12 +214,7 @@ export class MovieController {
         return;
       }
 
-      const isSurprise = Boolean(
-        profile.free_text &&
-        /\b(surprise(\s+me)?|random|pick\s+for\s+me)\b/i.test(profile.free_text)
-      );
-
-      if ((!hasMeaningfulPreferences && !isSurprise) || profile.low_confidence) {
+      if (!hasMeaningfulPreferences || (profile.low_confidence && !isGuided && !isOpenDiscovery)) {
         res.json({
           success: true,
           count: 0,

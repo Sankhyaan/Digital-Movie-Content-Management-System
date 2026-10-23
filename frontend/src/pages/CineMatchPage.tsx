@@ -216,13 +216,13 @@ export default function CineMatchPage() {
       if (!recResult || !recResult.success) {
         throw new Error('No results returned.');
       }
-      if ((recResult as any).clarification_needed) {
-        setError((recResult as any).message || "We couldn't identify any clear movie preferences in your request. Try describing genres, moods, actors, or movie titles you enjoy.");
+      if ((recResult as any).clarification_needed && (!recResult.recommendations || recResult.recommendations.length === 0)) {
+        setError((recResult as any).message || "We couldn't identify any clear movie preferences in your request. Showing top cinema recommendations below:");
       }
       setProfile(builtProfile);
       let recs = Array.isArray(recResult.recommendations) ? recResult.recommendations : [];
 
-      if (recs.length === 0 && !(recResult as any).clarification_needed) {
+      if (recs.length === 0) {
         try {
           const fallback = await fetchMovies({ limit: 12 }, false);
           if (Array.isArray(fallback) && fallback.length > 0) {
@@ -249,7 +249,7 @@ export default function CineMatchPage() {
               },
               match_reasons: ['Trending catalog title recommended for you'],
             }));
-            setError('No exact matches found for that specific combination — showing top catalog titles instead:');
+            setError('Showing top catalog recommendations:');
           }
         } catch {}
       }

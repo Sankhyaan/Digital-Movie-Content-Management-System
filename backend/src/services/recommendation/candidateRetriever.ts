@@ -5,6 +5,8 @@
 // Enforces HARD structural constraints without over-filtering soft preferences.
 // =============================================================================
 
+import fs from 'fs';
+import path from 'path';
 import { pool } from '../../db/connection';
 import { MovieDNA } from '../../models/interfaces';
 import { UserPreferenceProfile } from '../../models/preferenceProfile';
@@ -28,6 +30,7 @@ export class CandidateRetriever {
 
   /**
    * Initializes or refreshes the in-memory MovieDNA catalog cache.
+   * Tries MySQL content_dna table first, then falls back to movie_dna.json.
    */
   public async init(): Promise<void> {
     if (this.loaded) return;
@@ -40,25 +43,99 @@ export class CandidateRetriever {
          ORDER BY cd.content_id ASC`
       );
 
+      if (Array.isArray(rows) && rows.length > 0) {
+        this.dnaCache = [];
+        this.dnaMap.clear();
+
+        for (const row of rows) {
+          let dna: any;
+          if (typeof row.dna_json === 'string') {
+            dna = JSON.parse(row.dna_json);
+          } else {
+            dna = { ...row.dna_json };
+          }
+          dna.poster_path = row.poster_path || null;
+          this.dnaCache.push(dna as MovieDNA);
+          this.dnaMap.set(dna.content_id, dna as MovieDNA);
+        }
+
+        this.loaded = true;
+        console.log(`[CandidateRetriever] Cached ${this.dnaCache.length} MovieDNA records in memory from database.`);
+        return;
+      } else {
+        console.warn('[CandidateRetriever] content_dna table returned 0 records. Falling back to JSON catalog.');
+      }
+    } catch (err: any) {
+      console.warn('[CandidateRetriever] Failed to load MovieDNA from database:', err?.message);
+    }
+
+    // Always fall back to JSON file if database returned 0 rows or failed
+    await this.loadFromFileFallback();
+  }
+
+  /**
+   * Fallback loader that reads movie_dna.json from filesystem and
+   * hydrates poster paths from the content table if available.
+   */
+  private async loadFromFileFallback(): Promise<void> {
+    try {
+      const candidatePaths = [
+        path.resolve(process.cwd(), 'data/movie_dna.json'),
+        path.resolve(process.cwd(), 'backend/data/movie_dna.json'),
+        path.resolve(process.cwd(), '../data/movie_dna.json'),
+        path.resolve(__dirname, '../../data/movie_dna.json'),
+        path.resolve(__dirname, '../../../data/movie_dna.json'),
+        path.resolve(__dirname, '../../../../data/movie_dna.json'),
+      ];
+
+      let jsonFilePath: string | null = null;
+      for (const p of candidatePaths) {
+        if (fs.existsSync(p)) {
+          jsonFilePath = p;
+          break;
+        }
+      }
+
+      if (!jsonFilePath) {
+        console.error('[CandidateRetriever] movie_dna.json not found in filesystem.');
+        return;
+      }
+
+      console.log(`[CandidateRetriever] Loading MovieDNA records from JSON fallback: ${jsonFilePath}`);
+      const raw = fs.readFileSync(jsonFilePath, 'utf-8');
+      const records: MovieDNA[] = JSON.parse(raw);
+
+      // Hydrate poster_path from content table if available
+      const posterMap = new Map<number, string>();
+      try {
+        const [contentRows]: any = await pool.query(
+          `SELECT content_id, poster_path FROM content WHERE poster_path IS NOT NULL`
+        );
+        if (Array.isArray(contentRows)) {
+          for (const row of contentRows) {
+            if (row.content_id && row.poster_path) {
+              posterMap.set(row.content_id, row.poster_path);
+            }
+          }
+        }
+      } catch (err: any) {
+        console.warn('[CandidateRetriever] Could not query content table for posters:', err?.message);
+      }
+
       this.dnaCache = [];
       this.dnaMap.clear();
 
-      for (const row of rows) {
-        let dna: any;
-        if (typeof row.dna_json === 'string') {
-          dna = JSON.parse(row.dna_json);
-        } else {
-          dna = { ...row.dna_json };
-        }
-        dna.poster_path = row.poster_path || null;
-        this.dnaCache.push(dna as MovieDNA);
-        this.dnaMap.set(dna.content_id, dna as MovieDNA);
+      for (const item of records) {
+        const poster = posterMap.get(item.content_id) || (item as any).poster_path || null;
+        (item as any).poster_path = poster;
+        this.dnaCache.push(item);
+        this.dnaMap.set(item.content_id, item);
       }
 
       this.loaded = true;
-      console.log(`[CandidateRetriever] Cached ${this.dnaCache.length} MovieDNA records in memory.`);
+      console.log(`[CandidateRetriever] Fallback successfully loaded and cached ${this.dnaCache.length} MovieDNA records in memory.`);
     } catch (err) {
-      console.error('[CandidateRetriever] Failed to load MovieDNA from database:', err);
+      console.error('[CandidateRetriever] Failed to load MovieDNA from JSON fallback:', err);
     }
   }
 
@@ -317,6 +394,21 @@ export class CandidateRetriever {
       }
 
       candidates.push(item);
+    }
+
+    // Relaxation fallback: if strict constraints returned 0 candidates,
+    // relax secondary constraints (retaining only format/type and hard negative exclusions)
+    // to guarantee user always gets high-quality recommendations.
+    if (candidates.length === 0 && this.dnaCache.length > 0) {
+      console.warn('[CandidateRetriever] Strict filters returned 0 candidates. Relaxing filters to guarantee matches.');
+      for (const item of this.dnaCache) {
+        if (typeConstraint && item.type !== typeConstraint) continue;
+        if (hasNegativeGenres && profile.negative_genres.some((ng) => item.genres.includes(ng))) continue;
+        candidates.push(item);
+      }
+      if (candidates.length === 0) {
+        candidates = [...this.dnaCache];
+      }
     }
 
     return candidates;

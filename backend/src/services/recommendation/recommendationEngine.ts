@@ -120,8 +120,13 @@ export class RecommendationEngine {
 
     // 4. Candidate Retrieval (Hard structural filtering)
     const tRetrieveStart = Date.now();
-    const candidateDnas = await this.retriever.retrieveCandidates(profile);
+    let candidateDnas = await this.retriever.retrieveCandidates(profile);
     const candidateRetrievalMs = Date.now() - tRetrieveStart;
+
+    if (candidateDnas.length === 0 && this.retriever.getAllDnas().length > 0) {
+      console.warn('[RecommendationEngine] Candidate pool was 0; falling back to catalog pool');
+      candidateDnas = this.retriever.getAllDnas();
+    }
 
     // 5. Feature Scoring & Hybrid Ranking
     const tScoreStart = Date.now();
