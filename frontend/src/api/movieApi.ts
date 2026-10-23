@@ -136,10 +136,14 @@ export async function fetchMovies(filters: MovieFilters = {}, forceFresh = false
 }
 
 export async function fetchFeaturedMovies(_forceFresh = true): Promise<Movie[]> {
-  const { data } = await api.get('/movies/featured', {
-    params: { _t: Date.now() },
-  });
-  return data.data;
+  try {
+    const { data } = await api.get('/movies/featured', {
+      params: { _t: Date.now() },
+    });
+    return Array.isArray(data?.data) ? data.data : [];
+  } catch {
+    return [];
+  }
 }
 
 export async function fetchTrendingMovies(forceFresh = false): Promise<Movie[]> {
@@ -149,8 +153,9 @@ export async function fetchTrendingMovies(forceFresh = false): Promise<Movie[]> 
     if (cached) return cached;
   }
   const { data } = await api.get('/movies/trending');
-  setCachedData(cacheKey, data.data);
-  return data.data;
+  const items = Array.isArray(data?.data) ? data.data : [];
+  setCachedData(cacheKey, items);
+  return items;
 }
 
 export async function fetchGenres(forceFresh = false): Promise<string[]> {
@@ -160,18 +165,22 @@ export async function fetchGenres(forceFresh = false): Promise<string[]> {
     if (cached) return cached;
   }
   const { data } = await api.get('/movies/genres');
-  setCachedData(cacheKey, data.data);
-  return data.data;
+  const items = Array.isArray(data?.data) ? data.data : [];
+  setCachedData(cacheKey, items);
+  return items;
 }
 
 export async function searchMovies(query: string): Promise<Movie[]> {
-  const cacheKey = 'search_' + query.trim().toLowerCase();
+  const trimmed = query.trim();
+  if (!trimmed) return [];
+  const cacheKey = 'search_' + trimmed.toLowerCase();
   const cached = getCachedData<Movie[]>(cacheKey);
   if (cached) return cached;
 
-  const { data } = await api.get('/movies/search', { params: { q: query } });
-  setCachedData(cacheKey, data.data, 2 * 60 * 1000); // 2 min cache for searches
-  return data.data;
+  const { data } = await api.get('/movies/search', { params: { q: trimmed } });
+  const items = Array.isArray(data?.data) ? data.data : [];
+  setCachedData(cacheKey, items, 2 * 60 * 1000); // 2 min cache for searches
+  return items;
 }
 
 export async function fetchMovieById(id: string | undefined, forceFresh = false): Promise<MovieDetail> {

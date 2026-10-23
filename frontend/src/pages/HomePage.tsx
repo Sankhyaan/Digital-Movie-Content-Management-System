@@ -131,10 +131,12 @@ export default function HomePage() {
     setLoadingMore(true);
     try {
       const more = await fetchMovies({ limit: 48, offset: allMovies.length }, true);
-      if (more.length === 0) {
+      const existingIds = new Set(allMovies.map((m) => m.contentId));
+      const uniqueMore = more.filter((m) => m && m.contentId != null && !existingIds.has(m.contentId));
+      if (uniqueMore.length === 0) {
         setHasMore(false);
       } else {
-        const updated = [...allMovies, ...more];
+        const updated = [...allMovies, ...uniqueMore];
         setAllMovies(updated);
         if (homeMemoryCache) homeMemoryCache.allMovies = updated;
       }
