@@ -20,14 +20,16 @@ export class MovieController {
   getAllMovies = async (req: Request, res: Response): Promise<void> => {
     try {
       const typeParam = req.query.type as string | undefined;
+      const parsedLimit = req.query.limit ? parseInt(req.query.limit as string, 10) : undefined;
+      const parsedOffset = req.query.offset ? parseInt(req.query.offset as string, 10) : undefined;
       const filters: ContentFilters = {
-        genre:    req.query.genre    as string | undefined,
-        year:     req.query.year     as string | undefined,
-        search:   req.query.search   as string | undefined,
-        language: req.query.language as string | undefined,
+        genre:    typeof req.query.genre === 'string' ? req.query.genre.trim() || undefined : undefined,
+        year:     typeof req.query.year === 'string' ? req.query.year.trim() || undefined : undefined,
+        search:   typeof req.query.search === 'string' ? req.query.search.trim() || undefined : undefined,
+        language: typeof req.query.language === 'string' ? req.query.language.trim() || undefined : undefined,
         type:     typeParam === 'Movie' || typeParam === 'Series' ? typeParam : undefined,
-        limit:    req.query.limit    ? parseInt(req.query.limit as string, 10) : undefined,
-        offset:   req.query.offset   ? parseInt(req.query.offset as string, 10) : undefined,
+        limit:    parsedLimit != null && !isNaN(parsedLimit) && parsedLimit > 0 ? parsedLimit : undefined,
+        offset:   parsedOffset != null && !isNaN(parsedOffset) && parsedOffset >= 0 ? parsedOffset : undefined,
       };
       const [items, total] = await Promise.all([
         this.service.getAllMovies(filters),
@@ -76,7 +78,7 @@ export class MovieController {
   /** GET /api/movies/search?q= */
   searchMovies = async (req: Request, res: Response): Promise<void> => {
     try {
-      const query = req.query.q as string;
+      const query = typeof req.query.q === 'string' ? req.query.q.trim() : '';
       if (!query) {
         res.status(400).json({ success: false, error: 'Query parameter "q" is required' });
         return;
@@ -92,11 +94,15 @@ export class MovieController {
   /** GET /api/movies/recommend */
   getRecommendations = async (req: Request, res: Response): Promise<void> => {
     try {
-      const vibe = req.query.vibe as string || null;
-      const type = req.query.type as string || null;
-      const maxDuration = req.query.maxDuration ? parseInt(req.query.maxDuration as string) : null;
-      const minYear = req.query.minYear ? parseInt(req.query.minYear as string) : null;
-      const minRating = req.query.minRating ? parseFloat(req.query.minRating as string) : null;
+      const vibe = typeof req.query.vibe === 'string' ? req.query.vibe.trim() || null : null;
+      const type = typeof req.query.type === 'string' ? req.query.type.trim() || null : null;
+      const rawDuration = req.query.maxDuration ? parseInt(req.query.maxDuration as string, 10) : null;
+      const rawYear = req.query.minYear ? parseInt(req.query.minYear as string, 10) : null;
+      const rawRating = req.query.minRating ? parseFloat(req.query.minRating as string) : null;
+
+      const maxDuration = rawDuration !== null && !isNaN(rawDuration) && rawDuration > 0 ? rawDuration : null;
+      const minYear = rawYear !== null && !isNaN(rawYear) && rawYear > 1800 ? rawYear : null;
+      const minRating = rawRating !== null && !isNaN(rawRating) && rawRating >= 0 ? rawRating : null;
 
       const items = await this.service.getRecommendations(vibe, type, maxDuration, minYear, minRating);
       res.json({ success: true, count: items.length, data: items });

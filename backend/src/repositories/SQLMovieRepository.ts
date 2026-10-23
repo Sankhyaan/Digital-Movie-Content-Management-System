@@ -415,12 +415,14 @@ export class SQLMovieRepository {
     }
     sql += ' GROUP BY c.content_id ORDER BY c.release_year DESC';
 
-    const limitNum = filters?.limit ? Math.max(1, parseInt(String(filters.limit), 10)) : 60;
+    const rawLimit = filters?.limit != null ? parseInt(String(filters.limit), 10) : NaN;
+    const limitNum = !isNaN(rawLimit) && rawLimit > 0 ? rawLimit : 60;
     sql += ' LIMIT ?';
     params.push(limitNum);
 
-    if (filters?.offset) {
-      const offsetNum = Math.max(0, parseInt(String(filters.offset), 10));
+    if (filters?.offset != null) {
+      const rawOffset = parseInt(String(filters.offset), 10);
+      const offsetNum = !isNaN(rawOffset) && rawOffset >= 0 ? rawOffset : 0;
       sql += ' OFFSET ?';
       params.push(offsetNum);
     }
