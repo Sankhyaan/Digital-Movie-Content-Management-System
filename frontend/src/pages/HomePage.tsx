@@ -21,6 +21,7 @@ import {
 } from '../components/Icons';
 
 interface HomeCache {
+  featured: Movie[];
   trending: Movie[];
   actionMovies: Movie[];
   dramaMovies: Movie[];
@@ -34,8 +35,8 @@ let homeMemoryCache: HomeCache | null = null;
 export default function HomePage() {
   const initialCache = homeMemoryCache || getCachedData<HomeCache>('home_page_bundle');
 
-  // Top panel: always fresh random 10 movies on visit/click/refresh
-  const [featured, setFeatured] = useState<Movie[]>([]);
+  // Top panel: initialized from cache for instant 0ms mount, or loaded smoothly
+  const [featured, setFeatured] = useState<Movie[]>(() => initialCache?.featured || []);
   const [trending, setTrending] = useState<Movie[]>(() => initialCache?.trending || []);
   const [actionMovies, setActionMovies] = useState<Movie[]>(() => initialCache?.actionMovies || []);
   const [dramaMovies, setDramaMovies] = useState<Movie[]>(() => initialCache?.dramaMovies || []);
@@ -52,6 +53,7 @@ export default function HomePage() {
       const featuredData = await fetchFeaturedMovies(true);
       if (featuredData && featuredData.length > 0) {
         setFeatured(featuredData);
+        if (homeMemoryCache) homeMemoryCache.featured = featuredData;
       }
     } catch (err) {
       console.error('Failed to load random featured movies:', err);
@@ -80,7 +82,7 @@ export default function HomePage() {
         scifiRes,
         animRes,
       ] = await Promise.allSettled([
-        fetchFeaturedMovies(true),
+        fetchFeaturedMovies(false),
         fetchTrendingMovies(),
         fetchMovies({ limit: 48 }),
         fetchMovies({ genre: 'Action', limit: 20 }),
@@ -97,7 +99,7 @@ export default function HomePage() {
       const scifiData    = scifiRes.status === 'fulfilled' ? scifiRes.value : [];
       const animData     = animRes.status === 'fulfilled' ? animRes.value : [];
 
-      setFeatured(featuredData);
+      if (featuredData.length > 0) setFeatured(featuredData);
       setTrending(trendingData);
       setAllMovies(allData);
       setActionMovies(actionData);
@@ -106,6 +108,7 @@ export default function HomePage() {
       setAnimMovies(animData);
 
       const newBundle: HomeCache = {
+        featured: featuredData.length > 0 ? featuredData : (homeMemoryCache?.featured || []),
         trending: trendingData,
         allMovies: allData,
         actionMovies: actionData,
@@ -123,8 +126,10 @@ export default function HomePage() {
   }, []);
 
   useEffect(() => {
-    loadData();
-  }, [loadData]);
+    if (!initialCache || initialCache.trending.length === 0) {
+      loadData();
+    }
+  }, [loadData, initialCache]);
 
   const handleLoadMore = async () => {
     if (loadingMore || !hasMore) return;

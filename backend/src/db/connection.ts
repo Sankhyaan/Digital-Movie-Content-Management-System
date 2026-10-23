@@ -20,7 +20,7 @@ export const pool = mysql.createPool({
   user:     process.env.DB_USER     || 'root',
   password: process.env.DB_PASSWORD || '',
   waitForConnections: true,
-  connectionLimit:    10,
+  connectionLimit:    25,
   queueLimit:         0,
 });
 

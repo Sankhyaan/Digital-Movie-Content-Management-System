@@ -135,12 +135,21 @@ export async function fetchMovies(filters: MovieFilters = {}, forceFresh = false
   return res.movies;
 }
 
-export async function fetchFeaturedMovies(_forceFresh = true): Promise<Movie[]> {
+export async function fetchFeaturedMovies(forceFresh = false): Promise<Movie[]> {
+  const cacheKey = 'movies_featured';
+  if (!forceFresh) {
+    const cached = getCachedData<Movie[]>(cacheKey);
+    if (cached && cached.length > 0) return cached;
+  }
   try {
     const { data } = await api.get('/movies/featured', {
-      params: { _t: Date.now() },
+      params: forceFresh ? { _t: Date.now() } : {},
     });
-    return Array.isArray(data?.data) ? data.data : [];
+    const items = Array.isArray(data?.data) ? data.data : [];
+    if (items.length > 0) {
+      setCachedData(cacheKey, items, 5 * 60 * 1000);
+    }
+    return items;
   } catch {
     return [];
   }

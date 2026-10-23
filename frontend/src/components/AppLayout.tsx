@@ -61,11 +61,11 @@ export default function AppLayout({ children }: AppLayoutProps) {
           title={sidebarCollapsed ? item.label : undefined}
           onClick={() => {
             setMobileMenuOpen(false);
-            if (item.to === '/home') {
+            if (item.to === '/home' && (location.pathname === '/home' || location.pathname === '/')) {
               window.dispatchEvent(new CustomEvent('cineverse:home-clicked'));
             }
-            clearSavedCineMatch();
-            if (item.to === '/cinematch') {
+            if (item.to === '/cinematch' && location.pathname === '/cinematch') {
+              clearSavedCineMatch();
               window.dispatchEvent(new CustomEvent('cineverse:cinematch-reset'));
             }
           }}

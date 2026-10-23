@@ -5,7 +5,7 @@
 // Persists to localStorage so the watchlist survives page refreshes.
 // =============================================================================
 
-import { createContext, useContext, useReducer, useEffect, ReactNode } from 'react';
+import { createContext, useContext, useReducer, useEffect, useCallback, useMemo, ReactNode } from 'react';
 import type { Movie } from '../api/movieApi';
 
 // ── Context shape ─────────────────────────────────────────────────────────
@@ -87,25 +87,46 @@ export function WatchlistProvider({ children }: WatchlistProviderProps) {
     }
   }, [watchlist]);
 
-  const addToWatchlist = (movie: Movie) => {
+  const watchlistIdSet = useMemo(() => {
+    const set = new Set<number>();
+    if (Array.isArray(watchlist)) {
+      for (const m of watchlist) {
+        if (m && m.contentId != null) set.add(m.contentId);
+      }
+    }
+    return set;
+  }, [watchlist]);
+
+  const addToWatchlist = useCallback((movie: Movie) => {
     if (!movie || movie.contentId == null) return;
     dispatch({ type: ACTIONS.ADD, payload: movie });
-  };
+  }, []);
 
-  const removeFromWatchlist = (movieId: number) => {
+  const removeFromWatchlist = useCallback((movieId: number) => {
     if (movieId == null) return;
     dispatch({ type: ACTIONS.REMOVE, payload: movieId });
-  };
+  }, []);
 
-  const isInWatchlist = (movieId: number): boolean => {
-    if (movieId == null || !Array.isArray(watchlist)) return false;
-    return watchlist.some((m) => m && m.contentId === movieId);
-  };
+  const isInWatchlist = useCallback(
+    (movieId: number): boolean => {
+      if (movieId == null) return false;
+      return watchlistIdSet.has(movieId);
+    },
+    [watchlistIdSet]
+  );
+
+  const contextValue = useMemo(
+    () => ({
+      watchlist: watchlist || [],
+      addToWatchlist,
+      removeFromWatchlist,
+      isInWatchlist,
+    }),
+    [watchlist, addToWatchlist, removeFromWatchlist, isInWatchlist]
+  );
 
   return (
-    <WatchlistContext.Provider
-      value={{ watchlist: watchlist || [], addToWatchlist, removeFromWatchlist, isInWatchlist }}
-    >
+    <WatchlistContext.Provider value={contextValue}>
       {children}
     </WatchlistContext.Provider>
   );

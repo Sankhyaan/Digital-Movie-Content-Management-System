@@ -111,7 +111,7 @@ export default function CategoryRow({
       {/* Shelf Slider — scrollbar completely hidden, ample padding so cards and hover shadows are never clipped */}
       <div
         ref={ref}
-        className="no-scrollbar scroll-smooth snap-x snap-mandatory"
+        className="no-scrollbar scroll-smooth"
         style={{
           display: 'flex',
           gap: '22px',
@@ -127,7 +127,7 @@ export default function CategoryRow({
         {validMovies.map((movie, i) => (
           <div
             key={`${movie.contentId}-${i}`}
-            className="shrink-0 snap-start"
+            className="shrink-0"
             style={{ width: '190px', flexShrink: 0 }}
           >
             <MovieCard movie={movie} index={i} />

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, Link, useNavigate } from 'react-router-dom';
+import { useParams, Link, useNavigate, useLocation } from 'react-router-dom';
 import {
   fetchMovieById,
   posterUrl,
@@ -7,7 +7,7 @@ import {
   actorProfileUrl,
   getCachedData,
 } from '../api/movieApi';
-import type { MovieDetail } from '../api/movieApi';
+import type { Movie, MovieDetail } from '../api/movieApi';
 import { useWatchlist } from '../context/WatchlistContext';
 import {
   IconPlay,
@@ -40,8 +40,13 @@ const langName = (raw = ''): string => {
 
 export default function MovieDetailPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { id } = useParams<{ id: string }>();
-  const initialMovie = id ? getCachedData<MovieDetail>('movie_detail_' + id) : null;
+  const stateMovie = location.state?.movie as Movie | undefined;
+  const isMatchingState = Boolean(stateMovie && String(stateMovie.contentId) === String(id));
+  const cachedMovie = id ? getCachedData<MovieDetail>('movie_detail_' + id) : null;
+  const initialMovie = cachedMovie || (isMatchingState ? (stateMovie as MovieDetail) : null);
+
   const [movie, setMovie] = useState<MovieDetail | null>(initialMovie);
   const [loading, setLoading] = useState(!initialMovie);
   const [activeTab, setActive] = useState<'overview' | 'cast' | 'episodes'>('overview');
@@ -62,19 +67,26 @@ export default function MovieDetailPage() {
     if (cached) {
       setMovie(cached);
       setLoading(false);
+    } else if (isMatchingState && stateMovie) {
+      setMovie(stateMovie as MovieDetail);
+      setLoading(false);
     } else {
       setLoading(true);
     }
     setActive('overview');
 
     async function load() {
+      if (!id) {
+        if (isMounted) setLoading(false);
+        return;
+      }
       try {
         const data = await fetchMovieById(id);
         if (isMounted) {
           setMovie(data);
         }
       } catch (e) {
-        console.error(e);
+        console.error('Failed to load movie details:', e);
       } finally {
         if (isMounted) setLoading(false);
       }

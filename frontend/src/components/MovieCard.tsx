@@ -40,6 +40,7 @@ const MovieCard = React.memo(function MovieCard({ movie, index = 0 }: MovieCardP
   return (
     <Link
       to={`/movie/${movie.contentId}`}
+      state={{ movie }}
       id={`movie-card-${movie.contentId}`}
       className="group block text-decoration-none select-none"
     >

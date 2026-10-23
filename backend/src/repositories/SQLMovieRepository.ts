@@ -220,9 +220,9 @@ function buildContent(row: ContentRow, lookups: ContentLookups): Content {
   };
 }
 
-// ── Hydrate: fetch all relations for a list of content rows ───────────────────
+// ── Hydrate: fetch relations for content rows (lightweight for cards, full for detail view) ──
 
-async function hydrateContent(rows: ContentRow[]): Promise<Content[]> {
+async function hydrateContent(rows: ContentRow[], full = false): Promise<Content[]> {
   if (rows.length === 0) return [];
 
   const ids = rows.map(r => r.content_id);
@@ -238,115 +238,134 @@ async function hydrateContent(rows: ContentRow[]): Promise<Content[]> {
     episodes:  new Map(),
   };
 
-  // Actors
+  // Genres are lightweight and used by movie cards
   try {
-    const [actors] = await pool.query<ActorRow[]>(
-      `SELECT ca.content_id, ca.actor_id, a.name, a.profile_path, ca.role_name
-       FROM content_actor ca
-       JOIN actor a ON a.actor_id = ca.actor_id
-       WHERE ca.content_id IN (${ph})`,
+    const [genres] = await pool.query<GenreRow[]>(
+      `SELECT cg.content_id, g.genre_name
+       FROM content_genre cg
+       JOIN genre g ON g.genre_id = cg.genre_id
+       WHERE cg.content_id IN (${ph})`,
       ids,
     );
-    for (const a of actors) {
-      let list = lookups.actors.get(a.content_id);
-      if (!list) { list = []; lookups.actors.set(a.content_id, list); }
-      list.push(a);
+    for (const g of genres) {
+      let list = lookups.genres.get(g.content_id);
+      if (!list) { list = []; lookups.genres.set(g.content_id, list); }
+      list.push(g);
     }
   } catch (err: any) {
-    console.warn('[SQLMovieRepository] Could not fetch actors:', err?.message);
+    console.warn('[SQLMovieRepository] Could not fetch genres:', err?.message);
   }
 
-  // Directors
-  try {
-    const [directors] = await pool.query<DirectorRow[]>(
-      `SELECT cd.content_id, cd.director_id, d.name, d.profile_path
-       FROM content_director cd
-       JOIN director d ON d.director_id = cd.director_id
-       WHERE cd.content_id IN (${ph})`,
-      ids,
-    );
-    for (const d of directors) {
-      let list = lookups.directors.get(d.content_id);
-      if (!list) { list = []; lookups.directors.set(d.content_id, list); }
-      list.push(d);
-    }
-  } catch (err: any) {
-    console.warn('[SQLMovieRepository] Could not fetch directors:', err?.message);
-  }
-
-  // Genres
-  const [genres] = await pool.query<GenreRow[]>(
-    `SELECT cg.content_id, g.genre_name
-     FROM content_genre cg
-     JOIN genre g ON g.genre_id = cg.genre_id
-     WHERE cg.content_id IN (${ph})`,
-    ids,
-  );
-  for (const g of genres) {
-    let list = lookups.genres.get(g.content_id);
-    if (!list) { list = []; lookups.genres.set(g.content_id, list); }
-    list.push(g);
-  }
-
-  // Languages
-  const [languages] = await pool.query<LangRow[]>(
-    `SELECT cl.content_id, cl.language_id, l.language_name, cl.type
-     FROM content_language cl
-     JOIN language l ON l.language_id = cl.language_id
-     WHERE cl.content_id IN (${ph})`,
-    ids,
-  );
-  for (const l of languages) {
-    let list = lookups.languages.get(l.content_id);
-    if (!list) { list = []; lookups.languages.set(l.content_id, list); }
-    list.push(l);
-  }
-
-  // Platforms
-  const [platforms] = await pool.query<PlatformRow[]>(
-    `SELECT cp.content_id, cp.platform_id, o.name,
-            cp.available_from, cp.available_till, cp.region
-     FROM content_platform cp
-     JOIN ott_platform o ON o.platform_id = cp.platform_id
-     WHERE cp.content_id IN (${ph})`,
-    ids,
-  );
-  for (const p of platforms) {
-    let list = lookups.platforms.get(p.content_id);
-    if (!list) { list = []; lookups.platforms.set(p.content_id, list); }
-    list.push(p);
-  }
-
-  // Seasons + Episodes (only for Series)
-  const seriesIds = rows.filter(r => r.type === 'Series').map(r => r.content_id);
-  if (seriesIds.length > 0) {
-    const sph = seriesIds.map(() => '?').join(',');
-    const [seasons] = await pool.query<SeasonRow[]>(
-      `SELECT season_id, series_id, season_number
-       FROM season
-       WHERE series_id IN (${sph})
-         AND season_number > 0`,
-      seriesIds,
-    );
-    for (const s of seasons) {
-      let list = lookups.seasons.get(s.series_id);
-      if (!list) { list = []; lookups.seasons.set(s.series_id, list); }
-      list.push(s);
-    }
-
-    if (seasons.length > 0) {
-      const seasonIds = seasons.map(s => s.season_id);
-      const eph = seasonIds.map(() => '?').join(',');
-      const [episodes] = await pool.query<EpisodeRow[]>(
-        `SELECT episode_id, season_id, title, episode_number, duration
-         FROM episode
-         WHERE season_id IN (${eph})`,
-        seasonIds,
+  // Only the single-item detail view needs full relational hydration (actors, directors, OTT, seasons)
+  if (full) {
+    // Actors
+    try {
+      const [actors] = await pool.query<ActorRow[]>(
+        `SELECT ca.content_id, ca.actor_id, a.name, a.profile_path, ca.role_name
+         FROM content_actor ca
+         JOIN actor a ON a.actor_id = ca.actor_id
+         WHERE ca.content_id IN (${ph})`,
+        ids,
       );
-      for (const e of episodes) {
-        let list = lookups.episodes.get(e.season_id);
-        if (!list) { list = []; lookups.episodes.set(e.season_id, list); }
-        list.push(e);
+      for (const a of actors) {
+        let list = lookups.actors.get(a.content_id);
+        if (!list) { list = []; lookups.actors.set(a.content_id, list); }
+        list.push(a);
+      }
+    } catch (err: any) {
+      console.warn('[SQLMovieRepository] Could not fetch actors:', err?.message);
+    }
+
+    // Directors
+    try {
+      const [directors] = await pool.query<DirectorRow[]>(
+        `SELECT cd.content_id, cd.director_id, d.name, d.profile_path
+         FROM content_director cd
+         JOIN director d ON d.director_id = cd.director_id
+         WHERE cd.content_id IN (${ph})`,
+        ids,
+      );
+      for (const d of directors) {
+        let list = lookups.directors.get(d.content_id);
+        if (!list) { list = []; lookups.directors.set(d.content_id, list); }
+        list.push(d);
+      }
+    } catch (err: any) {
+      console.warn('[SQLMovieRepository] Could not fetch directors:', err?.message);
+    }
+
+    // Languages
+    try {
+      const [languages] = await pool.query<LangRow[]>(
+        `SELECT cl.content_id, cl.language_id, l.language_name, cl.type
+         FROM content_language cl
+         JOIN language l ON l.language_id = cl.language_id
+         WHERE cl.content_id IN (${ph})`,
+        ids,
+      );
+      for (const l of languages) {
+        let list = lookups.languages.get(l.content_id);
+        if (!list) { list = []; lookups.languages.set(l.content_id, list); }
+        list.push(l);
+      }
+    } catch (err: any) {
+      console.warn('[SQLMovieRepository] Could not fetch languages:', err?.message);
+    }
+
+    // Platforms
+    try {
+      const [platforms] = await pool.query<PlatformRow[]>(
+        `SELECT cp.content_id, cp.platform_id, o.name,
+                cp.available_from, cp.available_till, cp.region
+         FROM content_platform cp
+         JOIN ott_platform o ON o.platform_id = cp.platform_id
+         WHERE cp.content_id IN (${ph})`,
+        ids,
+      );
+      for (const p of platforms) {
+        let list = lookups.platforms.get(p.content_id);
+        if (!list) { list = []; lookups.platforms.set(p.content_id, list); }
+        list.push(p);
+      }
+    } catch (err: any) {
+      console.warn('[SQLMovieRepository] Could not fetch platforms:', err?.message);
+    }
+
+    // Seasons + Episodes (only for Series)
+    const seriesIds = rows.filter(r => r.type === 'Series').map(r => r.content_id);
+    if (seriesIds.length > 0) {
+      try {
+        const sph = seriesIds.map(() => '?').join(',');
+        const [seasons] = await pool.query<SeasonRow[]>(
+          `SELECT season_id, series_id, season_number
+           FROM season
+           WHERE series_id IN (${sph})
+             AND season_number > 0`,
+          seriesIds,
+        );
+        for (const s of seasons) {
+          let list = lookups.seasons.get(s.series_id);
+          if (!list) { list = []; lookups.seasons.set(s.series_id, list); }
+          list.push(s);
+        }
+
+        if (seasons.length > 0) {
+          const seasonIds = seasons.map(s => s.season_id);
+          const eph = seasonIds.map(() => '?').join(',');
+          const [episodes] = await pool.query<EpisodeRow[]>(
+            `SELECT episode_id, season_id, title, episode_number, duration
+             FROM episode
+             WHERE season_id IN (${eph})`,
+            seasonIds,
+          );
+          for (const e of episodes) {
+            let list = lookups.episodes.get(e.season_id);
+            if (!list) { list = []; lookups.episodes.set(e.season_id, list); }
+            list.push(e);
+          }
+        }
+      } catch (err: any) {
+        console.warn('[SQLMovieRepository] Could not fetch seasons/episodes:', err?.message);
       }
     }
   }
@@ -428,7 +447,7 @@ export class SQLMovieRepository {
     }
 
     const [rows] = await pool.query<ContentRow[]>(sql, params);
-    return hydrateContent(rows);
+    return hydrateContent(rows, false);
   }
 
   /** Fast count of total matching content items */
@@ -470,13 +489,13 @@ export class SQLMovieRepository {
     return Number(rows[0]?.total ?? 0);
   }
 
-  /** Single content item by content_id */
+  /** Single content item by content_id (Full relational hydration) */
   async getById(id: string): Promise<Content | null> {
     const [rows] = await pool.query<ContentRow[]>(
       `${BASE_SELECT} WHERE c.content_id = ?`, [id],
     );
     if (rows.length === 0) return null;
-    const items = await hydrateContent(rows);
+    const items = await hydrateContent(rows, true);
     const item = items[0];
     if (item && !item.trailerKey) {
       try {
@@ -492,19 +511,30 @@ export class SQLMovieRepository {
     return item;
   }
 
-  /** Featured — random 10 high-rated titles with backdrops & descriptions for the hero carousel */
+  private featuredPoolCache: { items: ContentRow[]; expiry: number } | null = null;
+
+  /** Featured — 10 high-rated titles with backdrops & descriptions for the hero carousel (instant in-memory sampling) */
   async getFeatured(): Promise<Content[]> {
-    const [rows] = await pool.query<ContentRow[]>(
-      `${BASE_SELECT}
-       WHERE c.backdrop_path IS NOT NULL
-         AND TRIM(c.backdrop_path) != ''
-         AND c.description IS NOT NULL
-         AND TRIM(c.description) != ''
-         AND c.rating >= 6.5
-       ORDER BY RAND()
-       LIMIT 10`,
-    );
-    return hydrateContent(rows);
+    if (!this.featuredPoolCache || this.featuredPoolCache.expiry < Date.now()) {
+      const [rows] = await pool.query<ContentRow[]>(
+        `${BASE_SELECT}
+         WHERE c.backdrop_path IS NOT NULL
+           AND TRIM(c.backdrop_path) != ''
+           AND c.description IS NOT NULL
+           AND TRIM(c.description) != ''
+           AND c.rating >= 6.5
+         ORDER BY c.rating DESC, c.release_year DESC
+         LIMIT 60`,
+      );
+      this.featuredPoolCache = { items: rows, expiry: Date.now() + 5 * 60 * 1000 };
+    }
+
+    const poolRows = this.featuredPoolCache.items;
+    if (poolRows.length <= 10) {
+      return hydrateContent(poolRows, false);
+    }
+    const shuffled = [...poolRows].sort(() => 0.5 - Math.random());
+    return hydrateContent(shuffled.slice(0, 10), false);
   }
 
   /** Trending — most recently released high-rated content, up to 20 items */
@@ -517,7 +547,7 @@ export class SQLMovieRepository {
        ORDER BY c.release_year DESC, c.rating DESC
        LIMIT 20`,
     );
-    return hydrateContent(rows);
+    return hydrateContent(rows, false);
   }
 
   /** All distinct genre names */
@@ -554,7 +584,7 @@ export class SQLMovieRepository {
       trimmed,
     ]);
 
-    return hydrateContent(rows);
+    return hydrateContent(rows, false);
   }
 
   /** CineMatch Recommendation Engine */
@@ -572,6 +602,6 @@ export class SQLMovieRepository {
     // mysql2 returns an array of result sets for stored procedures.
     // The first result set contains our row data.
     const rows = results[0] as ContentRow[];
-    return hydrateContent(rows);
+    return hydrateContent(rows, false);
   }
 }
