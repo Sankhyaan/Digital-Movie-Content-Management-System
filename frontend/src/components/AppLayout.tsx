@@ -73,22 +73,20 @@ export default function AppLayout({ children }: AppLayoutProps) {
             sidebarCollapsed ? 'justify-center' : 'gap-3'
           } ${
             isActive
-              ? 'bg-gradient-to-r from-sky-500/15 to-blue-600/10 text-sky-300 font-semibold border border-sky-500/20 shadow-sm shadow-sky-500/10'
+              ? 'bg-gradient-to-r from-sky-500/[0.14] via-sky-500/[0.08] to-transparent text-white font-semibold border border-sky-400/25 shadow-[inset_0_1px_1px_rgba(255,255,255,0.08),0_2px_12px_-2px_rgba(14,165,233,0.22)]'
               : 'text-neutral-400 hover:text-white hover:bg-white/[0.04] border border-transparent'
           }`}
           style={{
-            padding: sidebarCollapsed ? '13px 0' : '12px 14px',
+            padding: sidebarCollapsed ? '13px 0' : '11px 14px',
             fontSize: '0.92rem',
             width: '100%',
           }}
         >
-          {isActive && (
-            <div className="absolute left-0 top-1.5 bottom-1.5 w-1 bg-gradient-to-b from-sky-400 to-blue-500 rounded-r shadow-[0_0_10px_rgba(56,189,248,0.7)]" />
-          )}
-
           <div
-            className={`w-5 shrink-0 flex items-center justify-center transition-colors ${
-              isActive ? 'text-sky-400' : 'text-neutral-400 group-hover:text-sky-300'
+            className={`w-5 shrink-0 flex items-center justify-center transition-all duration-200 ${
+              isActive
+                ? 'text-sky-400 drop-shadow-[0_0_8px_rgba(56,189,248,0.65)]'
+                : 'text-neutral-400 group-hover:text-neutral-200 group-hover:scale-105'
             }`}
           >
             <Icon size={19} />
@@ -96,16 +94,34 @@ export default function AppLayout({ children }: AppLayoutProps) {
 
           {!sidebarCollapsed && (
             <>
-              <span className="flex-1 truncate">{item.label}</span>
+              <span
+                className={`flex-1 truncate tracking-tight transition-colors ${
+                  isActive ? 'text-white font-semibold' : 'text-neutral-400 group-hover:text-neutral-200'
+                }`}
+              >
+                {item.label}
+              </span>
 
               {item.highlight && (
-                <span className="shrink-0 text-[0.62rem] font-bold px-1.5 py-0.5 rounded-full bg-sky-500/20 text-sky-300 border border-sky-400/30 uppercase tracking-wide">
+                <span
+                  className={`shrink-0 text-[0.62rem] font-bold px-1.5 py-0.5 rounded-md uppercase tracking-wider transition-all duration-200 ${
+                    isActive
+                      ? 'bg-gradient-to-r from-sky-400 to-blue-500 text-slate-950 font-black shadow-[0_0_10px_rgba(56,189,248,0.45)]'
+                      : 'bg-sky-500/15 text-sky-300 border border-sky-400/25 group-hover:bg-sky-500/25 group-hover:border-sky-400/40'
+                  }`}
+                >
                   AI
                 </span>
               )}
 
               {typeof item.count === 'number' && item.count > 0 && (
-                <span className="shrink-0 text-[0.65rem] font-bold px-2 py-0.5 rounded-full bg-sky-500/20 text-sky-300 border border-sky-500/30">
+                <span
+                  className={`shrink-0 text-[0.65rem] font-bold px-2 py-0.5 rounded-full border transition-all ${
+                    isActive
+                      ? 'bg-sky-400/20 text-sky-200 border-sky-400/35'
+                      : 'bg-white/[0.06] text-neutral-400 border-white/[0.08] group-hover:text-white'
+                  }`}
+                >
                   {item.count}
                 </span>
               )}
