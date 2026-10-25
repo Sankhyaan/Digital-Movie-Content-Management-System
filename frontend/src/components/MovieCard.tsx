@@ -106,7 +106,10 @@ const MovieCard = React.memo(function MovieCard({ movie, index = 0 }: MovieCardP
           gap: '6px',
         }}
       >
-        <h4 className="font-outfit font-bold text-sm text-neutral-200 group-hover:text-sky-300 transition-colors truncate">
+        <h4
+          title={movie.title}
+          className="font-outfit font-bold text-sm text-neutral-200 group-hover:text-sky-300 transition-colors truncate"
+        >
           {movie.title}
         </h4>
         <div className="flex items-center gap-1.5 text-[0.74rem] text-neutral-400 font-medium truncate">

@@ -194,11 +194,13 @@ export default function AppLayout({ children }: AppLayoutProps) {
             /* Expanded state: Full logo and collapse button beside title */
             <>
               <Link
-                to="/cinematch"
+                to="/home"
+                title="CineVerse Home"
                 onClick={() => {
                   setMobileMenuOpen(false);
-                  clearSavedCineMatch();
-                  window.dispatchEvent(new CustomEvent('cineverse:cinematch-reset'));
+                  if (location.pathname === '/home' || location.pathname === '/') {
+                    window.dispatchEvent(new CustomEvent('cineverse:home-clicked'));
+                  }
                 }}
                 className="flex items-center gap-3 group text-decoration-none min-w-0"
               >
