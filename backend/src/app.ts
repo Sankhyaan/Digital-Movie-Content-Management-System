@@ -42,12 +42,19 @@ export function createApp(repository: IMovieRepository): Application {
       }
     }
 
+    const mem = process.memoryUsage();
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
     res.json({
       status: 'OK',
       timestamp: new Date().toISOString(),
       version: '1.0.0',
       commit: gitCommit,
       uptime: Math.floor(process.uptime()),
+      memory: {
+        heapUsedMB: Math.round((mem.heapUsed / 1024 / 1024) * 100) / 100,
+        heapTotalMB: Math.round((mem.heapTotal / 1024 / 1024) * 100) / 100,
+        rssMB: Math.round((mem.rss / 1024 / 1024) * 100) / 100,
+      },
       environment: process.env.NODE_ENV || 'development',
     });
   });
