@@ -40,9 +40,6 @@ export default function Footer() {
           </Link>
           <Link
             to="/search"
-            onClick={() => {
-              clearSavedCineMatch();
-            }}
             className="hover:text-sky-300 transition-colors"
           >
             Explore
@@ -59,9 +56,6 @@ export default function Footer() {
           </Link>
           <Link
             to="/watchlist"
-            onClick={() => {
-              clearSavedCineMatch();
-            }}
             className="hover:text-sky-300 transition-colors"
           >
             Watchlist
