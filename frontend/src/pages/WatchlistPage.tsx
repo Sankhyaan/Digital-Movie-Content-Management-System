@@ -1,30 +1,67 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useWatchlist } from '../context/WatchlistContext';
 import MovieCard from '../components/MovieCard';
 
 export default function WatchlistPage() {
   const { watchlist } = useWatchlist();
+  const [filterType, setFilterType] = useState<'All' | 'Movie' | 'Series'>('All');
   const items = Array.isArray(watchlist) ? watchlist : [];
   const count = items.length;
 
+  const filteredItems = items.filter((m) => {
+    if (filterType === 'All') return true;
+    return m.type === filterType;
+  });
+
   return (
     <div id="watchlist-page" style={{ display: 'flex', flexDirection: 'column', gap: '32px', maxWidth: '1450px', width: '100%', margin: '0 auto', flex: 1 }}>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-        <h1 className="font-outfit font-black text-3xl sm:text-4xl text-white tracking-tight">
-          My <span className="text-sky-400">Watchlist</span>
-        </h1>
-        <p style={{ color: '#64748b', fontSize: '0.875rem' }}>
-          {count} {count === 1 ? 'title' : 'titles'} saved
-        </p>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '16px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+          <h1 className="font-outfit font-black text-3xl sm:text-4xl text-white tracking-tight">
+            My <span className="text-sky-400">Watchlist</span>
+          </h1>
+          <p style={{ color: '#64748b', fontSize: '0.875rem' }}>
+            {count} {count === 1 ? 'title' : 'titles'} saved
+          </p>
+        </div>
+
+        {count > 0 && (
+          <div className="flex items-center gap-2">
+            {(['All', 'Movie', 'Series'] as const).map((t) => {
+              const label = t === 'All' ? 'All' : t === 'Movie' ? 'Movies' : 'TV Shows';
+              const isSelected = filterType === t;
+              return (
+                <button
+                  key={t}
+                  type="button"
+                  onClick={() => setFilterType(t)}
+                  className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                    isSelected
+                      ? 'bg-sky-500/20 text-sky-300 border border-sky-400/35 shadow-sm shadow-sky-500/15'
+                      : 'bg-white/[0.04] text-neutral-400 hover:text-white border border-white/[0.08]'
+                  }`}
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {count > 0 ? (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '22px' }}>
-          {items.map((movie, index) => (
-            <MovieCard key={movie.contentId || index} movie={movie} index={index} />
-          ))}
-        </div>
+        filteredItems.length > 0 ? (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '22px' }}>
+            {filteredItems.map((movie, index) => (
+              <MovieCard key={movie.contentId || index} movie={movie} index={index} />
+            ))}
+          </div>
+        ) : (
+          <div style={{ minHeight: '30vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', padding: '32px 16px', color: '#94a3b8' }}>
+            <p style={{ fontSize: '0.95rem' }}>No {filterType === 'Movie' ? 'movies' : 'TV shows'} found in your watchlist.</p>
+          </div>
+        )
       ) : (
         <div style={{ minHeight: '52vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', padding: '32px 16px', flex: 1 }}>
           <div
@@ -47,7 +84,7 @@ export default function WatchlistPage() {
             Your watchlist is empty
           </h3>
           <p style={{ fontSize: '0.875rem', color: '#94a3b8', maxWidth: '420px', lineHeight: 1.6, marginBottom: '28px' }}>
-            Browse titles and hit the + button on any movie or show to save it here.
+            Browse titles and click the bookmark button on any movie or show to save it here.
           </p>
           <Link
             to="/search"
