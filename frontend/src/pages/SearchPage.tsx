@@ -47,6 +47,15 @@ function SearchInput({ value, onChange, onSubmit }: SearchInputProps) {
           }}
           className="placeholder-neutral-400 focus:border-sky-500/60 focus:bg-[#0f172a] transition-all"
         />
+        {!value && (
+          <div
+            className="hidden sm:flex items-center justify-center absolute right-4 px-2 py-0.5 rounded-md text-xs font-mono text-neutral-500 bg-white/[0.04] border border-white/[0.08] pointer-events-none select-none"
+            style={{ top: '50%', transform: 'translateY(-50%)' }}
+            title="Press / to focus"
+          >
+            /
+          </div>
+        )}
         {value && (
           <button
             type="button"
@@ -307,6 +316,22 @@ export default function SearchPage() {
         console.error('Failed to load genres:', err);
         setGenres([]);
       });
+  }, []);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (
+        e.key === '/' &&
+        document.activeElement?.tagName !== 'INPUT' &&
+        document.activeElement?.tagName !== 'TEXTAREA'
+      ) {
+        e.preventDefault();
+        const input = document.getElementById('explore-search-input') as HTMLInputElement | null;
+        input?.focus();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
   useEffect(() => {
