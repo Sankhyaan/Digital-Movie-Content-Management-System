@@ -23,6 +23,15 @@ export function createApp(repository: IMovieRepository): Application {
   app.use(cors());
   app.use(express.json());
 
+  // ── Security Headers ────────────────────────────────────────────────────
+  app.use((_req, res, next) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+    res.setHeader('X-XSS-Protection', '1; mode=block');
+    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+    next();
+  });
+
   // ── Dependency Injection Wiring ────────────────────────────────────────
   const movieService = new MovieService(repository);
   const movieController = new MovieController(movieService);
