@@ -310,6 +310,10 @@ export default function SearchPage() {
   }, [query]);
 
   useEffect(() => {
+    document.title = query ? `Search: "${query}" | CineVerse` : 'Explore Movies & TV Shows | CineVerse';
+  }, [query]);
+
+  useEffect(() => {
     fetchGenres()
       .then((data) => setGenres(Array.isArray(data) ? data : []))
       .catch((err) => {

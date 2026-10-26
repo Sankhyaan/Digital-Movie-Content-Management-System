@@ -60,6 +60,10 @@ export default function HomePage() {
     }
   }, []);
 
+  useEffect(() => {
+    document.title = 'CineVerse | Stream Movies & TV Shows';
+  }, []);
+
   // Listen for Home tab click event (e.g. clicking Home in sidebar while already on /)
   useEffect(() => {
     const onHomeClick = () => {

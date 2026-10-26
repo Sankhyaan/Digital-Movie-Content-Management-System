@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useWatchlist } from '../context/WatchlistContext';
 import MovieCard from '../components/MovieCard';
@@ -8,6 +8,10 @@ export default function WatchlistPage() {
   const [filterType, setFilterType] = useState<'All' | 'Movie' | 'Series'>('All');
   const items = Array.isArray(watchlist) ? watchlist : [];
   const count = items.length;
+
+  useEffect(() => {
+    document.title = count > 0 ? `My Watchlist (${count}) | CineVerse` : 'My Watchlist | CineVerse';
+  }, [count]);
 
   const filteredItems = items.filter((m) => {
     if (filterType === 'All') return true;

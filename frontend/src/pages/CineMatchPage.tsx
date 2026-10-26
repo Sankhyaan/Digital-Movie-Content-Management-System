@@ -198,6 +198,10 @@ export default function CineMatchPage() {
   };
 
   useEffect(() => {
+    document.title = 'CineMatch AI Recommendations | CineVerse';
+  }, []);
+
+  useEffect(() => {
     const handleReset = () => {
       handleNewSearch();
     };
