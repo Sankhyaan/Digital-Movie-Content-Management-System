@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useWatchlist } from '../context/WatchlistContext';
 import Footer from './Footer';
@@ -9,6 +9,7 @@ import {
   IconSparkles,
   IconClose,
   IconMenu,
+  IconChevronUp,
 } from './Icons';
 import { clearSavedCineMatch } from '../utils/cinematchStorage';
 
@@ -27,9 +28,23 @@ interface NavItem {
 export default function AppLayout({ children }: AppLayoutProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [showScrollTop, setShowScrollTop] = useState(false);
   const { watchlist } = useWatchlist();
   const location = useLocation();
   const isMovieDetail = location.pathname.startsWith('/movie/');
+
+  useEffect(() => {
+    if (isMovieDetail) return;
+    const handleScroll = () => {
+      setShowScrollTop(window.scrollY > 400);
+    };
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, [isMovieDetail]);
+
+  const scrollToTop = () => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
 
   const discoverNavItems: NavItem[] = [
     { to: '/home', label: 'Home', icon: IconHome },
@@ -315,6 +330,20 @@ export default function AppLayout({ children }: AppLayoutProps) {
         {/* Footer: attached flush to the bottom */}
         <Footer />
       </div>
+
+      {/* Scroll to Top Floating Button */}
+      {!isMovieDetail && showScrollTop && (
+        <button
+          type="button"
+          onClick={scrollToTop}
+          id="scroll-to-top-btn"
+          aria-label="Scroll to top"
+          title="Scroll to top"
+          className="fixed bottom-7 right-7 z-40 w-11 h-11 rounded-full bg-[#0b101c]/90 border border-sky-400/40 text-sky-400 hover:text-white hover:bg-sky-500/20 hover:border-sky-400/70 shadow-lg shadow-sky-500/20 backdrop-blur-md flex items-center justify-center transition-all duration-300 hover:scale-110 active:scale-95 cursor-pointer"
+        >
+          <IconChevronUp size={20} />
+        </button>
+      )}
     </div>
   );
 }
