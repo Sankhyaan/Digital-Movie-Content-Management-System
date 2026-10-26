@@ -14,6 +14,7 @@ interface WatchlistContextValue {
   watchlist: Movie[];
   addToWatchlist: (movie: Movie) => void;
   removeFromWatchlist: (movieId: number) => void;
+  clearWatchlist: () => void;
   isInWatchlist: (movieId: number) => boolean;
 }
 
@@ -25,11 +26,13 @@ const STORAGE_KEY = 'cineverse_watchlist';
 
 type Action =
   | { type: 'ADD_TO_WATCHLIST'; payload: Movie }
-  | { type: 'REMOVE_FROM_WATCHLIST'; payload: number };
+  | { type: 'REMOVE_FROM_WATCHLIST'; payload: number }
+  | { type: 'CLEAR_WATCHLIST' };
 
 const ACTIONS = {
   ADD: 'ADD_TO_WATCHLIST' as const,
   REMOVE: 'REMOVE_FROM_WATCHLIST' as const,
+  CLEAR: 'CLEAR_WATCHLIST' as const,
 };
 
 // ── Reducer ───────────────────────────────────────────────────────────────
@@ -45,6 +48,8 @@ function watchlistReducer(state: Movie[], action: Action): Movie[] {
     case ACTIONS.REMOVE:
       if (action.payload == null) return currentList;
       return currentList.filter((m) => m && m.contentId !== action.payload);
+    case ACTIONS.CLEAR:
+      return [];
     default:
       return currentList;
   }
@@ -107,6 +112,10 @@ export function WatchlistProvider({ children }: WatchlistProviderProps) {
     dispatch({ type: ACTIONS.REMOVE, payload: movieId });
   }, []);
 
+  const clearWatchlist = useCallback(() => {
+    dispatch({ type: ACTIONS.CLEAR });
+  }, []);
+
   const isInWatchlist = useCallback(
     (movieId: number): boolean => {
       if (movieId == null) return false;
@@ -120,9 +129,10 @@ export function WatchlistProvider({ children }: WatchlistProviderProps) {
       watchlist: watchlist || [],
       addToWatchlist,
       removeFromWatchlist,
+      clearWatchlist,
       isInWatchlist,
     }),
-    [watchlist, addToWatchlist, removeFromWatchlist, isInWatchlist]
+    [watchlist, addToWatchlist, removeFromWatchlist, clearWatchlist, isInWatchlist]
   );
 
   return (

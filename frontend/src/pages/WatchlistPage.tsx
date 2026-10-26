@@ -4,8 +4,9 @@ import { useWatchlist } from '../context/WatchlistContext';
 import MovieCard from '../components/MovieCard';
 
 export default function WatchlistPage() {
-  const { watchlist } = useWatchlist();
+  const { watchlist, clearWatchlist } = useWatchlist();
   const [filterType, setFilterType] = useState<'All' | 'Movie' | 'Series'>('All');
+  const [confirmClear, setConfirmClear] = useState(false);
   const items = Array.isArray(watchlist) ? watchlist : [];
   const count = items.length;
 
@@ -50,6 +51,40 @@ export default function WatchlistPage() {
                 </button>
               );
             })}
+
+            <div className="w-px h-5 bg-white/10 mx-1" />
+
+            {confirmClear ? (
+              <div className="flex items-center gap-1.5 bg-red-500/10 border border-red-500/30 px-2.5 py-1 rounded-xl">
+                <span className="text-[0.72rem] text-red-300 font-medium">Clear all?</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    clearWatchlist();
+                    setConfirmClear(false);
+                  }}
+                  className="px-2 py-0.5 rounded-lg text-[0.72rem] font-bold bg-red-500 text-white hover:bg-red-600 transition-colors cursor-pointer"
+                >
+                  Yes
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setConfirmClear(false)}
+                  className="px-2 py-0.5 rounded-lg text-[0.72rem] text-neutral-400 hover:text-white transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setConfirmClear(true)}
+                className="px-3 py-1.5 rounded-xl text-xs font-semibold text-neutral-400 hover:text-red-400 hover:bg-red-500/10 border border-transparent hover:border-red-500/25 transition-all cursor-pointer"
+                title="Clear all saved titles"
+              >
+                Clear All
+              </button>
+            )}
           </div>
         )}
       </div>
