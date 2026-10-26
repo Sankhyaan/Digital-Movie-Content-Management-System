@@ -112,6 +112,15 @@ export default function MovieDetailPage() {
     };
   }, [showTrailer]);
 
+  useEffect(() => {
+    if (movie?.title) {
+      document.title = `${movie.title} | CineVerse`;
+    }
+    return () => {
+      document.title = 'CineVerse | Movie OTT Streaming Platform';
+    };
+  }, [movie?.title]);
+
   if (loading) {
     return (
       <div
@@ -390,6 +399,8 @@ export default function MovieDetailPage() {
               type="button"
               onClick={() => setShowTrailer(true)}
               id="detail-watch-trailer-btn"
+              aria-haspopup="dialog"
+              aria-expanded={showTrailer}
               style={{
                 width: '100%',
                 height: '46px',
