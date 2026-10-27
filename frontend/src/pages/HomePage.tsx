@@ -285,9 +285,16 @@ export default function HomePage() {
                 onClick={handleLoadMore}
                 disabled={loadingMore}
                 id="load-more-btn"
-                className="btn-primary"
+                className="btn-primary inline-flex items-center gap-2.5"
               >
-                {loadingMore ? 'Loading...' : 'Load More Titles'}
+                {loadingMore ? (
+                  <>
+                    <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    <span>Loading Titles...</span>
+                  </>
+                ) : (
+                  <span>Load More Titles</span>
+                )}
               </button>
             </div>
           )}

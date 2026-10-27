@@ -501,7 +501,14 @@ export default function SearchPage() {
                     opacity: loadingMore ? 0.7 : 1,
                   }}
                 >
-                  {loadingMore ? 'Loading More Titles...' : `Load More (${movies.length} of ${totalCount.toLocaleString()})`}
+                  {loadingMore ? (
+                    <>
+                      <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      <span>Loading More Titles...</span>
+                    </>
+                  ) : (
+                    `Load More (${movies.length} of ${totalCount.toLocaleString()})`
+                  )}
                 </button>
               </div>
             )}
