@@ -10,6 +10,7 @@ const API_BASE = '/api';
 export const api = axios.create({
   baseURL: API_BASE,
   headers: { 'Content-Type': 'application/json' },
+  timeout: 15000,
 });
 
 // ── Image resolver ────────────────────────────────────────────────────────────
@@ -37,7 +38,7 @@ export const actorProfileUrl = (path: string | null | undefined): string | null 
 };
 
 const placeholder = (title = ''): string =>
-  `https://placehold.co/300x450/060609/10b981?text=${encodeURIComponent(title || 'No Image')}`;
+  `https://placehold.co/300x450/06080e/0ea5e9?text=${encodeURIComponent(title || 'No Image')}`;
 
 // ── Shared filter / preference shapes ────────────────────────────────────────
 
