@@ -291,7 +291,7 @@ export default function HeroCarousel({ movies = [] }: HeroCarouselProps) {
         {/* Nav Controls (Previous / Next) on hover */}
         <button
           onClick={prev}
-          className="absolute left-4 top-1/2 -translate-y-1/2 z-20 w-10 h-10 rounded-full bg-black/50 hover:bg-black/80 border border-white/15 text-neutral-300 hover:text-sky-300 hover:border-sky-400/50 flex items-center justify-center opacity-0 group-hover:opacity-100 hover:scale-105 active:scale-95 transition-all duration-200 cursor-pointer shadow-lg shadow-black/40"
+          className="absolute left-4 top-1/2 -translate-y-1/2 z-20 w-10 h-10 rounded-full bg-black/60 hover:bg-black/80 border border-white/15 text-neutral-300 hover:text-sky-300 hover:border-sky-400/50 flex items-center justify-center opacity-80 md:opacity-0 md:group-hover:opacity-100 hover:scale-105 active:scale-95 transition-all duration-200 cursor-pointer shadow-lg shadow-black/40"
           aria-label="Previous slide"
         >
           <IconChevronLeft size={18} />
@@ -299,7 +299,7 @@ export default function HeroCarousel({ movies = [] }: HeroCarouselProps) {
 
         <button
           onClick={next}
-          className="absolute right-4 top-1/2 -translate-y-1/2 z-20 w-10 h-10 rounded-full bg-black/50 hover:bg-black/80 border border-white/15 text-neutral-300 hover:text-sky-300 hover:border-sky-400/50 flex items-center justify-center opacity-0 group-hover:opacity-100 hover:scale-105 active:scale-95 transition-all duration-200 cursor-pointer shadow-lg shadow-black/40"
+          className="absolute right-4 top-1/2 -translate-y-1/2 z-20 w-10 h-10 rounded-full bg-black/60 hover:bg-black/80 border border-white/15 text-neutral-300 hover:text-sky-300 hover:border-sky-400/50 flex items-center justify-center opacity-80 md:opacity-0 md:group-hover:opacity-100 hover:scale-105 active:scale-95 transition-all duration-200 cursor-pointer shadow-lg shadow-black/40"
           aria-label="Next slide"
         >
           <IconChevronRight size={18} />
