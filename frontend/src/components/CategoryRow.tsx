@@ -78,10 +78,12 @@ export default function CategoryRow({
           {seeAllLink && (
             <Link
               to={seeAllLink}
-              className="text-xs font-semibold text-neutral-400 hover:text-sky-300 transition-colors"
+              className="text-xs font-semibold text-neutral-400 hover:text-sky-300 transition-colors inline-flex items-center gap-1 group/seeall"
               style={{ textDecoration: 'none' }}
+              title={`View all ${title} titles`}
             >
-              See All
+              <span>See All</span>
+              <IconChevronRight size={13} className="group-hover/seeall:translate-x-0.5 transition-transform text-sky-400/80" />
             </Link>
           )}
 
