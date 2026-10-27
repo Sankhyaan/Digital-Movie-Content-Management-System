@@ -115,7 +115,12 @@ export class MovieController {
   /** GET /api/movies/:id */
   getMovieById = async (req: Request, res: Response): Promise<void> => {
     try {
-      const item = await this.service.getMovieById(req.params.id);
+      const id = req.params.id;
+      if (!id || !/^\d+$/.test(id.trim())) {
+        res.status(400).json({ success: false, error: 'Invalid content ID. Must be numeric.' });
+        return;
+      }
+      const item = await this.service.getMovieById(id.trim());
       if (!item) {
         res.status(404).json({ success: false, error: 'Content not found' });
         return;
